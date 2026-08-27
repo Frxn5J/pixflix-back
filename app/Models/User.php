@@ -52,6 +52,11 @@ class User extends Authenticatable
         return $this->hasMany(Subscription::class);
     }
 
+    public function isStaff(): bool
+    {
+        return in_array($this->role, ['admin', 'agent'], true);
+    }
+
     public function currentSubscription(): ?Subscription
     {
         return $this->subscriptions()->with('plan')->latest('id')->first();

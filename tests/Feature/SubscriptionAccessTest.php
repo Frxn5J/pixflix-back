@@ -62,11 +62,13 @@ class SubscriptionAccessTest extends TestCase
         $adminToken = $this->postJson('/api/v1/auth/login', ['login' => 'admin@test.test', 'password' => 'password'])->json('data.token');
         $this->withToken($adminToken)->getJson('/api/v1/me')->assertOk()->assertJsonPath('data.role', 'admin');
         $this->actingAs($admin, 'sanctum')->getJson('/api/v1/catalog')->assertOk();
+        $this->actingAs($admin, 'sanctum')->getJson('/api/v1/profiles')->assertOk()->assertJsonCount(0, 'data');
 
         $agent = User::factory()->create(['email' => 'agent@test.test', 'role' => 'agent']);
         $this->postJson('/api/v1/auth/login', ['login' => 'agent@test.test', 'password' => 'password'])->assertOk();
         $this->actingAs($agent, 'sanctum')->getJson('/api/v1/me')->assertOk()->assertJsonPath('data.role', 'agent');
         $this->actingAs($agent, 'sanctum')->getJson('/api/v1/catalog')->assertOk();
+        $this->actingAs($agent, 'sanctum')->getJson('/api/v1/profiles')->assertOk()->assertJsonCount(0, 'data');
     }
 
     public function test_unauthenticated_requests_are_rejected(): void

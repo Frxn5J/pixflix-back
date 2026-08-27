@@ -13,7 +13,7 @@ class EnsureActiveSubscription
     {
         $user = $request->user();
 
-        if ($user !== null && in_array($user->role, ['admin', 'agent'], true)) {
+        if ($user?->isStaff()) {
             return $next($request);
         }
 

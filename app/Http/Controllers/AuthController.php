@@ -101,7 +101,7 @@ class AuthController extends Controller
 
     private function ensureAccountCanLogin(User $user): void
     {
-        if (in_array($user->role, ['admin', 'agent'], true)) {
+        if ($user->isStaff()) {
             return;
         }
 

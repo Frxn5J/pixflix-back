@@ -14,7 +14,19 @@ class ProfileController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $subscription = $this->subscription($request);
+        $subscription = $request->user()?->currentSubscription();
+
+        if ($subscription === null && $request->user()?->isStaff()) {
+            return response()->json(['data' => []]);
+        }
+
+        if ($subscription === null) {
+            throw new ApiException(
+                'subscription_inactive',
+                'La suscripcion no esta activa.',
+                403,
+            );
+        }
 
         return response()->json([
             'data' => $subscription->profiles()->latest('id')->get()->map(
