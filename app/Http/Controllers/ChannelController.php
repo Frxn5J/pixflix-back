@@ -4,15 +4,17 @@ namespace App\Http\Controllers;
 
 use App\Models\Channel;
 use App\Models\EpgEntry;
+use App\Services\Iptv\IptvProxyPool;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Illuminate\Support\Facades\Http;
 use Throwable;
 
 class ChannelController extends Controller
 {
+    public function __construct(private readonly IptvProxyPool $proxyPool) {}
+
     public function index(Request $request): JsonResponse
     {
         $query = $this->activeChannels($request);
@@ -114,13 +116,10 @@ class ChannelController extends Controller
         }
 
         try {
-            $upstream = Http::timeout(20)
-                ->accept('*/*')
-                ->withHeaders([
-                    'User-Agent' => 'Pixflix/1.0 IPTV player',
-                    ...array_intersect_key((array) $channel->stream_headers, array_flip(['User-Agent', 'Referer'])),
-                ])
-                ->get($target);
+            $upstream = $this->proxyPool->fetch($target, 20, [
+                'User-Agent' => 'Pixflix/1.0 IPTV player',
+                ...array_intersect_key((array) $channel->stream_headers, array_flip(['User-Agent', 'Referer'])),
+            ]);
         } catch (Throwable) {
             return response()->json(['error' => [
                 'code' => 'stream_unavailable',
@@ -128,7 +127,7 @@ class ChannelController extends Controller
             ]], 502);
         }
 
-        if (! $upstream->successful()) {
+        if (! $upstream instanceof \Illuminate\Http\Client\Response || ! $upstream->successful()) {
             return response()->json(['error' => [
                 'code' => 'stream_unavailable',
                 'message' => 'El stream IPTV no esta disponible.',

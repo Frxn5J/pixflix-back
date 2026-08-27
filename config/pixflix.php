@@ -42,6 +42,7 @@ return [
     ],
     'iptv' => [
         'playlist_url' => env('PIXFLIX_IPTV_M3U_URL', 'https://iptv-org.github.io/iptv/index.m3u'),
+        'proxies' => [],
         'country' => env('PIXFLIX_IPTV_COUNTRY'),
         'max_channels' => env('PIXFLIX_IPTV_MAX_CHANNELS') !== null ? (int) env('PIXFLIX_IPTV_MAX_CHANNELS') : null,
         'timeout_seconds' => (int) env('PIXFLIX_IPTV_TIMEOUT_SECONDS', 30),

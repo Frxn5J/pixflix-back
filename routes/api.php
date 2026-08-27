@@ -55,6 +55,8 @@ Route::prefix('v1')->group(function () {
             Route::put('/plans/{id}', [AdminController::class, 'updatePlan'])->name('api.v1.admin.plans.update');
             Route::get('/channels', [AdminController::class, 'channels'])->name('api.v1.admin.channels');
             Route::put('/channels/{id}', [AdminController::class, 'updateChannel'])->name('api.v1.admin.channels.update');
+            Route::get('/iptv-proxies', [AdminController::class, 'iptvProxies'])->name('api.v1.admin.iptv-proxies');
+            Route::put('/iptv-proxies', [AdminController::class, 'updateIptvProxies'])->name('api.v1.admin.iptv-proxies.update');
             Route::get('/stream-fallback', [AdminController::class, 'streamFallback'])
                 ->middleware('role:admin')
                 ->name('api.v1.admin.stream-fallback');

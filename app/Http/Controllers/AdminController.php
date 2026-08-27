@@ -8,6 +8,7 @@ use App\Models\Subscription;
 use App\Models\User;
 use App\Services\Catalog\StremioAddonVerifier;
 use App\Services\Catalog\StremioContentVerifier;
+use App\Services\Iptv\IptvProxyPool;
 use App\Services\SyncSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -166,6 +167,43 @@ class AdminController extends Controller
         $channel->update($request->validate(['is_active' => ['required', 'boolean']]));
 
         return response()->json(['data' => $this->channelData($channel->refresh())]);
+    }
+
+    public function iptvProxies(IptvProxyPool $proxyPool): JsonResponse
+    {
+        return response()->json(['data' => [
+            'proxies' => $proxyPool->configuredForAdmin(),
+        ]]);
+    }
+
+    public function updateIptvProxies(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'proxies' => ['present', 'array', 'max:20'],
+            'proxies.*.id' => ['nullable', 'string', 'max:100'],
+            'proxies.*.name' => ['required', 'string', 'max:120'],
+            'proxies.*.base_url' => ['required', 'url:http,https', 'max:2048'],
+            'proxies.*.enabled' => ['required', 'boolean'],
+            'proxies.*.priority' => ['required', 'integer', 'between:1,10000'],
+        ]);
+
+        $proxies = collect($validated['proxies'])
+            ->map(fn (array $proxy, int $index): array => [
+                'id' => trim((string) ($proxy['id'] ?? 'proxy-'.($index + 1))),
+                'name' => trim($proxy['name']),
+                'base_url' => rtrim(trim($proxy['base_url']), '/'),
+                'enabled' => (bool) $proxy['enabled'],
+                'priority' => (int) $proxy['priority'],
+            ])
+            ->sortBy('priority')
+            ->values()
+            ->all();
+
+        $this->settings->put('iptv.proxies', $proxies);
+
+        return response()->json(['data' => [
+            'proxies' => $proxies,
+        ]]);
     }
 
     public function streamFallback(): JsonResponse
