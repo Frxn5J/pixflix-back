@@ -1,0 +1,2 @@
+# Ejecutar con: crontab -e
+* * * * * cd /var/www/pixflix-backend && php artisan schedule:run >> /dev/null 2>&1
