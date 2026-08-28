@@ -12,6 +12,7 @@ class TitleResource extends JsonResource
         return [
             'id' => $this->id,
             'slug' => $this->slug,
+            'tmdb_id' => $this->tmdb_id,
             'type' => $this->type,
             'title' => $this->title,
             'description' => $this->description,
@@ -25,6 +26,7 @@ class TitleResource extends JsonResource
             'category' => $this->category,
             'total_seasons' => $this->total_seasons,
             'total_episodes' => $this->total_episodes,
+            'metadata' => $this->metadata ?? [],
         ];
     }
 }

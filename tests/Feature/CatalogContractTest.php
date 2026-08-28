@@ -2,8 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\Plan;
 use App\Models\CatalogSnapshot;
+use App\Models\Plan;
 use App\Models\Season;
 use App\Models\Subscription;
 use App\Models\Title;
@@ -85,6 +85,36 @@ class CatalogContractTest extends TestCase
             ->assertOk()
             ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('data.0.slug', 'pelicula-importada');
+    }
+
+    public function test_catalog_includes_active_iptv_vod_titles_outside_snapshots(): void
+    {
+        $token = $this->subscriberToken();
+        CatalogSnapshot::factory()->create(['version' => 10, 'status' => 'success']);
+        Title::factory()->create([
+            'slug' => 'catalogo-principal',
+            'title' => 'Catalogo principal',
+            'snapshot_version' => 10,
+        ]);
+        Title::factory()->create([
+            'slug' => 'vod-activo',
+            'title' => 'VOD activo',
+            'source' => 'iptv_vod',
+            'is_active' => true,
+            'snapshot_version' => null,
+        ]);
+        Title::factory()->create([
+            'slug' => 'vod-retirado',
+            'title' => 'VOD retirado',
+            'source' => 'iptv_vod',
+            'is_active' => false,
+            'snapshot_version' => null,
+        ]);
+
+        $this->withToken($token)->getJson('/api/v1/catalog?q=VOD')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.slug', 'vod-activo');
     }
 
     public function test_genre_filter_is_normalized_like_the_backend(): void
@@ -192,6 +222,7 @@ class CatalogContractTest extends TestCase
         $user = User::factory()->create();
         Plan::factory()->create();
         Subscription::factory()->create(['user_id' => $user->id]);
+
         return $this->postJson('/api/v1/auth/login', ['login' => $user->email, 'password' => 'password'])->json('data.token');
     }
 }

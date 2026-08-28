@@ -113,6 +113,65 @@ class ChannelTest extends TestCase
         );
     }
 
+    public function test_proxy_urls_inside_manifests_are_unwrapped_before_the_next_fetch(): void
+    {
+        [$token] = $this->subscriber();
+        $channel = Channel::query()->create([
+            'name' => 'Canal con manifiesto reescrito',
+            'category' => 'Noticias',
+            'stream_url' => 'https://cdn.test/master.m3u8',
+            'is_active' => true,
+        ]);
+        Setting::query()->create([
+            'key' => 'iptv.proxies',
+            'value' => json_encode([[
+                'id' => 'proxy-one',
+                'name' => 'Proxy uno',
+                'base_url' => 'https://proxy-one.test/?token=secret',
+                'enabled' => true,
+                'priority' => 1,
+            ]]),
+        ]);
+        Cache::forget('pixflix:setting:iptv.proxies');
+        Cache::forget('pixflix:iptv-proxy-cursor');
+
+        Http::fake(function ($request) {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+            $target = $query['url'] ?? null;
+
+            if ($target === 'https://cdn.test/master.m3u8') {
+                return Http::response(
+                    "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=800000\n".
+                    'https://proxy-one.test/?token=secret&url='.
+                    rawurlencode('https://cdn.test/variant.m3u8')."\n",
+                    200,
+                    ['Content-Type' => 'application/vnd.apple.mpegurl'],
+                );
+            }
+
+            return Http::response("#EXTM3U\n#EXTINF:4,\nsegment.ts\n", 200, [
+                'Content-Type' => 'application/vnd.apple.mpegurl',
+            ]);
+        });
+
+        $masterUrl = $this->withToken($token)
+            ->getJson("/api/v1/channels/{$channel->id}")
+            ->json('data.stream.hls');
+        $masterResponse = $this->get($masterUrl)->assertOk();
+        $variantUrl = collect(preg_split('/\r?\n/', $masterResponse->getContent()))
+            ->first(fn (string $line): bool => $line !== '' && ! str_starts_with($line, '#'));
+
+        $this->assertIsString($variantUrl);
+        parse_str((string) parse_url($variantUrl, PHP_URL_QUERY), $variantQuery);
+        $this->assertSame('https://cdn.test/variant.m3u8', $variantQuery['target'] ?? null);
+        $this->assertStringNotContainsString('proxy-one.test', urldecode($variantUrl));
+
+        $this->get($variantUrl)->assertOk();
+        $requests = Http::recorded();
+        parse_str((string) parse_url($requests[1][0]->url(), PHP_URL_QUERY), $secondQuery);
+        $this->assertSame('https://cdn.test/variant.m3u8', $secondQuery['url'] ?? null);
+    }
+
     private function subscriber(): array
     {
         $user = User::factory()->create();

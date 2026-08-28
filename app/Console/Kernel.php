@@ -23,8 +23,8 @@ class Kernel extends ConsoleKernel
             ->everyMinute()
             ->withoutOverlapping()
             ->onOneServer();
-        $schedule->command('pixflix:sync-iptv')
-            ->dailyAt((string) config('pixflix.iptv.sync_cron', '03:30'))
+        $schedule->command('pixflix:sync-iptv-resources')
+            ->hourly()
             ->withoutOverlapping()
             ->onOneServer();
     }

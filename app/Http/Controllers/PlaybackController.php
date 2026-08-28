@@ -10,12 +10,16 @@ use App\Models\PlaybackLog;
 use App\Models\Title;
 use App\Models\WatchProgress;
 use App\Services\Catalog\StreamResolver;
+use App\Services\IptvVod\IptvVodPlayback;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class PlaybackController extends Controller
 {
-    public function __construct(private readonly StreamResolver $streams) {}
+    public function __construct(
+        private readonly StreamResolver $streams,
+        private readonly IptvVodPlayback $vod,
+    ) {}
 
     public function titleStreams(Request $request, string $slug): JsonResponse
     {
@@ -31,12 +35,15 @@ class PlaybackController extends Controller
 
         $this->logPlayback($request, 'play', $title, null);
 
-        return response()->json(['data' => $this->streams->titleStreams($title, $request->string('language')->toString() ?: null)]);
+        $streams = $this->vod->titleStreams($request, $title)
+            ?? $this->streams->titleStreams($title, $request->string('language')->toString() ?: null);
+
+        return response()->json(['data' => $streams]);
     }
 
     public function episodeStreams(Request $request, int $id): JsonResponse
     {
-        $episode = Episode::query()->find($id);
+        $episode = Episode::query()->with('season.title')->find($id);
 
         if ($episode === null) {
             throw new ApiException('not_found', 'El episodio solicitado no existe.', 404);
@@ -45,20 +52,32 @@ class PlaybackController extends Controller
         $title = $episode->season?->title()->first();
         $this->logPlayback($request, 'play', $title, $episode);
 
-        return response()->json(['data' => $this->streams->episodeStreams($episode, $request->string('language')->toString() ?: null)]);
+        $streams = $this->vod->episodeStreams($request, $episode)
+            ?? $this->streams->episodeStreams($episode, $request->string('language')->toString() ?: null);
+
+        return response()->json(['data' => $streams]);
     }
 
     public function resolve(PlaybackResolveRequest $request): JsonResponse
     {
         $payload = $request->validated();
-        $streams = $this->streams->resolve($payload);
+        $title = isset($payload['slug'])
+            ? Title::query()->where('slug', (string) $payload['slug'])->first()
+            : null;
+        $episode = isset($payload['episode_id'])
+            ? Episode::query()->with('season.title')->find($payload['episode_id'])
+            : null;
+        $streams = $episode !== null
+            ? $this->vod->episodeStreams($request, $episode)
+            : ($title !== null ? $this->vod->titleStreams($request, $title) : null);
+        if ($streams === null) {
+            $streams = $this->streams->resolve($payload);
+        }
 
         if ($streams === []) {
             throw new ApiException('not_found', 'No fue posible resolver el contenido.', 404);
         }
 
-        $title = isset($payload['slug']) ? Title::query()->where('slug', $payload['slug'])->first() : null;
-        $episode = isset($payload['episode_id']) ? Episode::query()->find($payload['episode_id']) : null;
         $this->logPlayback($request, 'resolve', $title, $episode);
 
         return response()->json(['data' => $streams]);

@@ -18,6 +18,7 @@ class CatalogSyncService
     public function __construct(
         private readonly PrincipalCatalogClient $client,
         private readonly CatalogNormalizer $normalizer,
+        private readonly TmdbMetadataClient $tmdb,
     ) {}
 
     public function normalizePage(string $type, int $page): array
@@ -173,6 +174,16 @@ class CatalogSyncService
             'snapshot_version' => $snapshot->version,
             'raw_extract' => $rawDetail,
         ]);
+        if ($attributes['type'] === 'movie') {
+            $attributes = $this->tmdb->apply(
+                $attributes,
+                $this->tmdb->find(
+                    (string) ($attributes['title'] ?? ''),
+                    $attributes['year'] ?? null,
+                    $attributes['tmdb_id'] ?? null,
+                ),
+            );
+        }
 
         $title = DB::transaction(function () use ($attributes, $detail, $snapshot) {
             $title = \App\Models\Title::query()

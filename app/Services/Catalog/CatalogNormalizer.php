@@ -12,6 +12,7 @@ class CatalogNormalizer
 
         return [
             'external_id' => isset($item['post_id']) ? (string) $item['post_id'] : null,
+            'tmdb_id' => $this->tmdbId($item),
             'slug' => $this->slugFromUrl($url, (string) ($item['title'] ?? 'title')),
             'type' => ($item['contentType'] ?? 'movie') === 'tvshow' ? 'tvshow' : 'movie',
             'title' => (string) ($item['title'] ?? 'Sin título'),
@@ -74,5 +75,17 @@ class CatalogNormalizer
         $segment = is_string($path) ? trim($path, '/') : '';
 
         return Str::slug($segment !== '' ? basename($segment) : $fallback);
+    }
+
+    private function tmdbId(array $item): ?int
+    {
+        foreach (['tmdb_id', 'tmdbId', 'tmdb'] as $key) {
+            $value = $item[$key] ?? null;
+            if (is_numeric($value) && (int) $value > 0) {
+                return (int) $value;
+            }
+        }
+
+        return null;
     }
 }

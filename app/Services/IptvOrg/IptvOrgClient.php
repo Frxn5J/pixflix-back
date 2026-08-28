@@ -13,9 +13,9 @@ class IptvOrgClient
      *
      * @return array<int, array<string, mixed>>
      */
-    public function entries(): array
+    public function entries(?string $playlistUrl = null): array
     {
-        $body = $this->downloadPlaylist();
+        $body = $this->downloadPlaylist($playlistUrl);
         $lines = preg_split('/\r\n|\r|\n/', $body) ?: [];
         $entries = [];
         $pending = null;
@@ -76,21 +76,21 @@ class IptvOrgClient
         return $entries;
     }
 
-    private function downloadPlaylist(): string
+    private function downloadPlaylist(?string $playlistUrl = null): string
     {
         try {
             $response = Http::withHeaders(['User-Agent' => 'Pixflix/1.0 M3U playlist sync'])
                 ->withOptions(['verify' => (bool) config('pixflix.iptv.verify_ssl', true)])
                 ->timeout((int) config('pixflix.iptv.timeout_seconds', 30))
                 ->accept('*/*')
-                ->get((string) config('pixflix.iptv.playlist_url'));
+                ->get($playlistUrl ?: (string) config('pixflix.iptv.playlist_url'));
         } catch (ConnectionException $exception) {
-            throw new RuntimeException('No fue posible descargar la playlist M3U de iptv-org.', 0, $exception);
+            throw new RuntimeException('No fue posible descargar la lista M3U configurada.', 0, $exception);
         }
 
         $body = $response->body();
         if (! $response->successful() || ! str_contains($body, '#EXTINF:')) {
-            throw new RuntimeException('iptv-org devolvio una playlist M3U invalida o vacia.');
+            throw new RuntimeException('La lista M3U configurada es invalida o esta vacia.');
         }
 
         return $body;

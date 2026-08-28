@@ -23,6 +23,14 @@ return [
         'page_size' => (int) env('PIXFLIX_CATALOG_PAGE_SIZE', 50),
         'max_pages' => (int) env('PIXFLIX_CATALOG_MAX_PAGES', 1000),
     ],
+    'tmdb' => [
+        'api_key' => env('PIXFLIX_TMDB_API_KEY', ''),
+        'access_token' => env('PIXFLIX_TMDB_ACCESS_TOKEN', ''),
+        'base_url' => env('PIXFLIX_TMDB_BASE_URL', 'https://api.themoviedb.org/3'),
+        'language' => env('PIXFLIX_TMDB_LANGUAGE', 'es-MX'),
+        'timeout_seconds' => (int) env('PIXFLIX_TMDB_TIMEOUT_SECONDS', 8),
+        'verify_ssl' => filter_var(env('PIXFLIX_TMDB_VERIFY_SSL', true), FILTER_VALIDATE_BOOLEAN),
+    ],
     'sync' => [
         'cron_hour' => env('PIXFLIX_SYNC_CRON_HOUR', '04:00'),
         'timezone' => env('PIXFLIX_SYNC_TIMEZONE', 'UTC'),

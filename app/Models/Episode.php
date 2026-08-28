@@ -12,6 +12,9 @@ class Episode extends Model
 
     protected $fillable = [
         'season_id',
+        'source',
+        'source_playlist_id',
+        'is_active',
         'number',
         'title',
         'url',
@@ -19,11 +22,15 @@ class Episode extends Model
         'release_date',
         'extract_url',
         'streams',
+        'stream_url',
+        'stream_headers',
     ];
 
     protected $casts = [
         'number' => 'integer',
         'streams' => 'array',
+        'stream_headers' => 'array',
+        'is_active' => 'boolean',
     ];
 
     public function season(): BelongsTo

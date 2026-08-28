@@ -13,6 +13,11 @@ class Title extends Model
 
     protected $fillable = [
         'external_id',
+        'tmdb_id',
+        'imdb_id',
+        'source',
+        'source_playlist_id',
+        'is_active',
         'slug',
         'type',
         'title',
@@ -28,14 +33,21 @@ class Title extends Model
         'total_seasons',
         'total_episodes',
         'raw_extract',
+        'stream_url',
+        'stream_headers',
+        'metadata',
         'snapshot_version',
     ];
 
     protected $casts = [
         'gallery' => 'array',
+        'tmdb_id' => 'integer',
         'languages' => 'array',
         'genres' => 'array',
         'raw_extract' => 'array',
+        'stream_headers' => 'array',
+        'metadata' => 'array',
+        'is_active' => 'boolean',
         'total_seasons' => 'integer',
         'total_episodes' => 'integer',
         'snapshot_version' => 'integer',

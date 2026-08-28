@@ -16,6 +16,7 @@ class TitleFactory extends Factory
 
         return [
             'external_id' => fake()->unique()->numerify('title-#####'),
+            'tmdb_id' => null,
             'slug' => fake()->unique()->slug(2),
             'type' => 'movie',
             'title' => $title,
@@ -31,6 +32,7 @@ class TitleFactory extends Factory
             'total_seasons' => null,
             'total_episodes' => null,
             'raw_extract' => null,
+            'metadata' => [],
             'snapshot_version' => null,
         ];
     }

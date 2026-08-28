@@ -9,6 +9,9 @@ use App\Models\User;
 use App\Services\Catalog\StremioAddonVerifier;
 use App\Services\Catalog\StremioContentVerifier;
 use App\Services\Iptv\IptvProxyPool;
+use App\Services\Iptv\IptvResourceSyncService;
+use App\Services\IptvOrg\IptvOrgSyncService;
+use App\Services\IptvVod\IptvVodSyncService;
 use App\Services\SyncSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -167,6 +170,128 @@ class AdminController extends Controller
         $channel->update($request->validate(['is_active' => ['required', 'boolean']]));
 
         return response()->json(['data' => $this->channelData($channel->refresh())]);
+    }
+
+    public function iptvPlaylists(): JsonResponse
+    {
+        return response()->json(['data' => [
+            'playlists' => $this->iptvPlaylistsData(),
+        ]]);
+    }
+
+    public function updateIptvPlaylists(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'playlists' => ['present', 'array', 'max:50'],
+            'playlists.*.id' => ['nullable', 'string', 'max:100'],
+            'playlists.*.name' => ['required', 'string', 'max:120'],
+            'playlists.*.url' => ['required', 'url:http,https', 'max:2048'],
+            'playlists.*.country' => ['nullable', 'string', 'max:10'],
+            'playlists.*.language' => ['nullable', 'string', 'max:80'],
+            'playlists.*.enabled' => ['required', 'boolean'],
+            'playlists.*.priority' => ['required', 'integer', 'between:1,10000'],
+        ]);
+
+        $playlists = collect($validated['playlists'])
+            ->map(fn (array $playlist, int $index): array => [
+                'id' => trim((string) ($playlist['id'] ?? 'playlist-'.($index + 1))),
+                'name' => trim($playlist['name']),
+                'url' => trim($playlist['url']),
+                'country' => $this->nullableUpper($playlist['country'] ?? null),
+                'language' => $this->nullableLower($playlist['language'] ?? null),
+                'enabled' => (bool) $playlist['enabled'],
+                'priority' => (int) $playlist['priority'],
+            ])
+            ->sortBy('priority')
+            ->values()
+            ->all();
+
+        $this->settings->put('iptv.playlists', $playlists);
+
+        return response()->json(['data' => [
+            'playlists' => $playlists,
+        ]]);
+    }
+
+    public function syncIptvPlaylists(IptvOrgSyncService $sync): JsonResponse
+    {
+        try {
+            return response()->json(['data' => $sync->run(
+                config('pixflix.iptv.country'),
+                null,
+                config('pixflix.iptv.max_channels'),
+            )]);
+        } catch (\Throwable $exception) {
+            return response()->json(['error' => [
+                'code' => 'iptv_sync_failed',
+                'message' => $exception->getMessage(),
+            ]], 502);
+        }
+    }
+
+    public function iptvVodPlaylists(): JsonResponse
+    {
+        return response()->json(['data' => [
+            'playlists' => $this->iptvVodPlaylistsData(),
+        ]]);
+    }
+
+    public function updateIptvVodPlaylists(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'playlists' => ['present', 'array', 'max:50'],
+            'playlists.*.id' => ['nullable', 'string', 'max:100'],
+            'playlists.*.name' => ['required', 'string', 'max:120'],
+            'playlists.*.url' => ['required', 'url:http,https', 'max:2048'],
+            'playlists.*.language' => ['nullable', 'string', 'max:80'],
+            'playlists.*.content_type' => ['required', Rule::in(['auto', 'movie'])],
+            'playlists.*.enabled' => ['required', 'boolean'],
+            'playlists.*.priority' => ['required', 'integer', 'between:1,10000'],
+        ]);
+
+        $playlists = collect($validated['playlists'])
+            ->map(fn (array $playlist, int $index): array => [
+                'id' => trim((string) ($playlist['id'] ?? 'vod-playlist-'.($index + 1))),
+                'name' => trim($playlist['name']),
+                'url' => trim($playlist['url']),
+                'language' => $this->nullableLower($playlist['language'] ?? null),
+                'content_type' => (string) $playlist['content_type'],
+                'enabled' => (bool) $playlist['enabled'],
+                'priority' => (int) $playlist['priority'],
+            ])
+            ->sortBy('priority')
+            ->values()
+            ->all();
+
+        $this->settings->put('iptv.vod_playlists', $playlists);
+
+        return response()->json(['data' => ['playlists' => $playlists]]);
+    }
+
+    public function syncIptvVodPlaylists(IptvVodSyncService $sync): JsonResponse
+    {
+        try {
+            return response()->json(['data' => $sync->run()]);
+        } catch (\Throwable $exception) {
+            return response()->json(['error' => [
+                'code' => 'iptv_vod_sync_failed',
+                'message' => $exception->getMessage(),
+            ]], 502);
+        }
+    }
+
+    public function refreshIptvResources(IptvResourceSyncService $sync): JsonResponse
+    {
+        try {
+            $result = $sync->run();
+        } catch (\Throwable $exception) {
+            return response()->json(['error' => [
+                'code' => 'iptv_resources_refresh_failed',
+                'message' => $exception->getMessage(),
+            ]], 502);
+        }
+
+        return response()->json(['data' => $result]);
     }
 
     public function iptvProxies(IptvProxyPool $proxyPool): JsonResponse
@@ -361,6 +486,46 @@ class AdminController extends Controller
             'is_active' => $channel->is_active,
             'has_stream' => $channel->stream_url !== null,
         ];
+    }
+
+    private function iptvPlaylistsData(): array
+    {
+        $playlists = $this->settings->get('iptv.playlists', null);
+
+        if ($playlists === null) {
+            return [[
+                'id' => 'iptv-org-default',
+                'name' => 'IPTV-org (predeterminada)',
+                'url' => (string) config('pixflix.iptv.playlist_url'),
+                'country' => $this->nullableUpper(config('pixflix.iptv.country')),
+                'language' => null,
+                'enabled' => true,
+                'priority' => 1,
+            ]];
+        }
+
+        return is_array($playlists) ? array_values($playlists) : [];
+    }
+
+    private function iptvVodPlaylistsData(): array
+    {
+        $playlists = $this->settings->get('iptv.vod_playlists', []);
+
+        return is_array($playlists) ? array_values($playlists) : [];
+    }
+
+    private function nullableUpper(mixed $value): ?string
+    {
+        $value = trim((string) $value);
+
+        return $value === '' ? null : strtoupper($value);
+    }
+
+    private function nullableLower(mixed $value): ?string
+    {
+        $value = trim((string) $value);
+
+        return $value === '' ? null : strtolower($value);
     }
 
     private function streamFallbackData(): array

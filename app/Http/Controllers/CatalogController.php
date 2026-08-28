@@ -107,7 +107,9 @@ class CatalogController extends Controller
         $title = $this->activeTitles()
             ->with([
                 'seasons' => fn ($query) => $query->orderBy('number'),
-                'seasons.episodes' => fn ($query) => $query->orderBy('number'),
+                'seasons.episodes' => fn ($query) => $query
+                    ->where('is_active', true)
+                    ->orderBy('number'),
             ])
             ->where('slug', $slug)
             ->firstOrFail();
@@ -122,15 +124,24 @@ class CatalogController extends Controller
         $versions = $this->visibleSnapshotVersions();
 
         if ($versions === []) {
-            return Title::query();
+            return Title::query()->where('is_active', true);
         }
 
         $latestTitleIds = Title::query()
             ->selectRaw('MAX(id)')
+            ->where('source', 'catalog')
             ->whereIn('snapshot_version', $versions)
             ->groupBy('slug');
 
-        return Title::query()->whereIn('id', $latestTitleIds);
+        return Title::query()->where(function (Builder $query) use ($latestTitleIds): void {
+            $query
+                ->whereIn('id', $latestTitleIds)
+                ->orWhere(function (Builder $vodQuery): void {
+                    $vodQuery
+                        ->where('source', 'iptv_vod')
+                        ->where('is_active', true);
+                });
+        });
     }
 
     private function visibleSnapshotVersions(): array

@@ -75,6 +75,16 @@ La playlist se configura con `PIXFLIX_IPTV_M3U_URL`; por defecto usa la lista
 M3U configurada por el proyecto. El contenido de origen no se muestra al
 usuario en la interfaz.
 
+El panel administrativo permite añadir listas M3U separadas para canales en
+vivo y para VOD. En las listas VOD, el modo automático agrupa nombres con
+`S01E02` o `1x02` como series; las demás entradas se importan como películas.
+La reproducción VOD reutiliza el pool de proxies IPTV, incluso para variantes
+y segmentos de manifiestos HLS.
+
+Las películas se enriquecen automáticamente con TMDB al sincronizar. Configura
+`PIXFLIX_TMDB_API_KEY` o `PIXFLIX_TMDB_ACCESS_TOKEN` para obtener sinopsis,
+duración, director, reparto, géneros, valoración, póster y enlace de TMDB.
+
 ## Actualización
 
 ```bash

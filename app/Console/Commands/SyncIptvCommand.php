@@ -10,6 +10,7 @@ class SyncIptvCommand extends Command
 {
     protected $signature = 'pixflix:sync-iptv
                             {--country= : Filtrar por codigo de pais ISO alpha-2, por ejemplo MX}
+                            {--language= : Filtrar por codigo de idioma, por ejemplo spa}
                             {--limit= : Limitar el numero de canales sincronizados}';
 
     protected $description = 'Sincroniza canales y streams publicos desde una playlist M3U de iptv-org';
@@ -19,6 +20,7 @@ class SyncIptvCommand extends Command
         try {
             $result = $sync->run(
                 $this->option('country') !== null ? (string) $this->option('country') : config('pixflix.iptv.country'),
+                $this->option('language') !== null ? (string) $this->option('language') : null,
                 $this->option('limit') !== null ? (int) $this->option('limit') : config('pixflix.iptv.max_channels'),
             );
         } catch (Throwable $exception) {

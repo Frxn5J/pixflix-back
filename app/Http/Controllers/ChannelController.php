@@ -115,8 +115,10 @@ class ChannelController extends Controller
             ]], 403);
         }
 
+        $upstreamTarget = $this->proxyPool->unwrap($target);
+
         try {
-            $upstream = $this->proxyPool->fetch($target, 20, [
+            $upstream = $this->proxyPool->fetch($upstreamTarget, 20, [
                 'User-Agent' => 'Pixflix/1.0 IPTV player',
                 ...array_intersect_key((array) $channel->stream_headers, array_flip(['User-Agent', 'Referer'])),
             ]);
@@ -137,11 +139,11 @@ class ChannelController extends Controller
         $body = $upstream->body();
         $contentType = (string) ($upstream->header('Content-Type') ?: 'application/octet-stream');
         $isManifest = str_contains(strtolower($contentType), 'mpegurl')
-            || str_ends_with(strtolower((string) parse_url($target, PHP_URL_PATH)), '.m3u8')
+            || str_ends_with(strtolower((string) parse_url($upstreamTarget, PHP_URL_PATH)), '.m3u8')
             || str_contains($body, '#EXTM3U');
 
         if ($isManifest) {
-            $body = $this->rewriteManifest($request, $id, $expires, $body, $target);
+            $body = $this->rewriteManifest($request, $id, $expires, $body, $upstreamTarget);
             $contentType = 'application/vnd.apple.mpegurl';
         }
 
@@ -213,7 +215,7 @@ class ChannelController extends Controller
         }
 
         $expires = now()->addHours(2)->timestamp;
-        $target = $channel->stream_url;
+        $target = $this->proxyPool->unwrap($channel->stream_url);
 
         return $this->proxyUrlForTarget($request, $channel->id, $expires, $target);
     }
@@ -235,7 +237,7 @@ class ChannelController extends Controller
     private function rewriteManifest(Request $request, int $channelId, int $expires, string $manifest, string $baseUrl): string
     {
         $manifest = preg_replace_callback('/URI="([^"]+)"/i', function (array $matches) use ($request, $channelId, $expires, $baseUrl): string {
-            $target = $this->resolveUrl($baseUrl, $matches[1]);
+            $target = $this->proxyPool->unwrap($this->resolveUrl($baseUrl, $matches[1]));
 
             return 'URI="'.$this->proxyUrlForTarget($request, $channelId, $expires, $target).'"';
         }, $manifest) ?? $manifest;
@@ -247,7 +249,7 @@ class ChannelController extends Controller
                 continue;
             }
 
-            $target = $this->resolveUrl($baseUrl, $trimmed);
+            $target = $this->proxyPool->unwrap($this->resolveUrl($baseUrl, $trimmed));
             $lines[$index] = $this->proxyUrlForTarget($request, $channelId, $expires, $target);
         }
 
