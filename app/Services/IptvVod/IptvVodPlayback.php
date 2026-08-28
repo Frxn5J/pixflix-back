@@ -4,10 +4,13 @@ namespace App\Services\IptvVod;
 
 use App\Models\Episode;
 use App\Models\Title;
+use App\Services\Streaming\StreamSigner;
 use Illuminate\Http\Request;
 
 class IptvVodPlayback
 {
+    public function __construct(private readonly StreamSigner $signer) {}
+
     public function titleStreams(Request $request, Title $title): ?array
     {
         if ($title->source !== 'iptv_vod') {
@@ -25,6 +28,7 @@ class IptvVodPlayback
             $title->stream_url,
             $title->quality,
             $title->languages[0] ?? 'Original',
+            (array) $title->stream_headers,
         )];
     }
 
@@ -47,6 +51,7 @@ class IptvVodPlayback
             $episode->stream_url,
             $title->quality,
             $title->languages[0] ?? 'Original',
+            (array) $episode->stream_headers,
         )];
     }
 
@@ -68,6 +73,9 @@ class IptvVodPlayback
             && filter_var($target, FILTER_VALIDATE_URL) !== false;
     }
 
+    /**
+     * @param  array<string, string>  $upstreamHeaders
+     */
     private function streamData(
         Request $request,
         string $kind,
@@ -75,17 +83,27 @@ class IptvVodPlayback
         string $target,
         ?string $quality,
         string $language,
+        array $upstreamHeaders = [],
     ): array {
         $expires = now()->addHours(12)->timestamp;
-        $proxyUrl = $this->proxyUrl($request, $kind, $id, $expires, $target);
         $path = strtolower((string) parse_url($target, PHP_URL_PATH));
         $isDirectVideo = preg_match('/\.(?:mp4|m4v|webm|mov)$/', $path) === 1;
+
+        // Direct video is raw bytes with no manifest to rewrite: hand it
+        // straight to the external media proxy when one is configured.
+        $mp4Url = null;
+        if ($isDirectVideo) {
+            $mp4Url = $this->signer->externalUrl($target, $expires, [
+                'User-Agent' => 'Pixflix/1.0 IPTV VOD player',
+                ...$upstreamHeaders,
+            ]) ?? $this->proxyUrl($request, $kind, $id, $expires, $target);
+        }
 
         return [
             'quality' => $quality ?: 'Automática',
             'language' => $language,
-            'hls' => $isDirectVideo ? null : $proxyUrl,
-            'mp4' => $isDirectVideo ? $proxyUrl : null,
+            'hls' => $isDirectVideo ? null : $this->proxyUrl($request, $kind, $id, $expires, $target),
+            'mp4' => $mp4Url,
         ];
     }
 

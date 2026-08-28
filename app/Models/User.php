@@ -4,8 +4,8 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
@@ -57,8 +57,24 @@ class User extends Authenticatable
         return in_array($this->role, ['admin', 'agent'], true);
     }
 
+    protected ?Subscription $memoizedCurrentSubscription = null;
+
+    protected bool $currentSubscriptionResolved = false;
+
+    /**
+     * Memoized per model instance: the auth middleware, the subscription gate
+     * and the controllers all ask for this within the same request.
+     */
     public function currentSubscription(): ?Subscription
     {
-        return $this->subscriptions()->with('plan')->latest('id')->first();
+        if (! $this->currentSubscriptionResolved) {
+            $this->memoizedCurrentSubscription = $this->subscriptions()
+                ->with('plan')
+                ->latest('id')
+                ->first();
+            $this->currentSubscriptionResolved = true;
+        }
+
+        return $this->memoizedCurrentSubscription;
     }
 }

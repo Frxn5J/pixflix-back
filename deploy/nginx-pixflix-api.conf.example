@@ -1,3 +1,12 @@
+# Pixflix API - nginx + PHP-FPM
+#
+# Optimized for high concurrency on small servers:
+#  - The /internal/upstream location lets PHP free its workers immediately
+#    via X-Accel-Redirect while nginx streams video with its event loop
+#    (set PIXFLIX_STREAM_DELIVERY=xaccel in the backend .env).
+#  - gzip for JSON payloads.
+#  - Long timeouts only where streams live; short everywhere else.
+
 server {
     listen 80;
     listen [::]:80;
@@ -6,6 +15,53 @@ server {
     root /var/www/pixflix-backend/public;
     index index.php;
 
+    # --- JSON compression -----------------------------------------------------
+    gzip on;
+    gzip_comp_level 5;
+    gzip_min_length 512;
+    gzip_proxied any;
+    gzip_types application/json application/vnd.apple.mpegurl application/x-mpegURL;
+
+    # --- Internal upstream proxy (video/streams) ------------------------------
+    # Only reachable through X-Accel-Redirect issued by the backend after it
+    # validates the HMAC signature. Never exposed to the internet directly.
+    location /internal/upstream {
+        internal;
+
+        # Required because proxy_pass uses a variable target.
+        resolver 1.1.1.1 8.8.8.8 valid=300s ipv6=off;
+        resolver_timeout 5s;
+
+        set $upstream_target $arg_target;
+        proxy_pass $upstream_target;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+
+        # Host/SNI derived from the target URL; drop hop-by-hop headers.
+        proxy_set_header Connection "";
+        proxy_set_header Range $http_range;
+        proxy_set_header If-Range $http_if_range;
+        proxy_set_header If-Modified-Since "";
+        proxy_set_header If-None-Match "";
+
+        # Optional per-resource upstream headers passed by the backend.
+        proxy_set_header User-Agent $arg_ua;
+        proxy_set_header Referer $arg_referer;
+
+        # Stream, don't buffer: video flows straight to the client.
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_connect_timeout 10s;
+
+        # Players need CORS on the media itself.
+        add_header Access-Control-Allow-Origin * always;
+        add_header Access-Control-Allow-Headers * always;
+        add_header Access-Control-Expose-Headers "Content-Length, Content-Range, Accept-Ranges" always;
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+    }
+
     location / {
         try_files $uri $uri/ /index.php?$query_string;
     }
@@ -13,6 +69,9 @@ server {
     location ~ \.php$ {
         include snippets/fastcgi-php.conf;
         fastcgi_pass unix:/run/php/php8.2-fpm.sock;
+
+        # API requests are fast; anything longer is a bug or a stuck sync.
+        fastcgi_read_timeout 120s;
     }
 
     location ~ /\.(?!well-known).* {

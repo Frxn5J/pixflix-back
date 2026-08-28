@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\RefreshIptvResourcesJob;
+use App\Jobs\SyncIptvJob;
+use App\Jobs\SyncIptvVodJob;
 use App\Models\Channel;
 use App\Models\Plan;
 use App\Models\Subscription;
@@ -215,6 +218,15 @@ class AdminController extends Controller
 
     public function syncIptvPlaylists(IptvOrgSyncService $sync): JsonResponse
     {
+        if ($this->syncIsAsync()) {
+            SyncIptvJob::dispatch();
+
+            return response()->json(['data' => [
+                'queued' => true,
+                'message' => 'La sincronizacion IPTV quedo en cola y se ejecutara en segundo plano.',
+            ]], 202);
+        }
+
         try {
             return response()->json(['data' => $sync->run(
                 config('pixflix.iptv.country'),
@@ -270,6 +282,15 @@ class AdminController extends Controller
 
     public function syncIptvVodPlaylists(IptvVodSyncService $sync): JsonResponse
     {
+        if ($this->syncIsAsync()) {
+            SyncIptvVodJob::dispatch();
+
+            return response()->json(['data' => [
+                'queued' => true,
+                'message' => 'La sincronizacion VOD quedo en cola y se ejecutara en segundo plano.',
+            ]], 202);
+        }
+
         try {
             return response()->json(['data' => $sync->run()]);
         } catch (\Throwable $exception) {
@@ -282,6 +303,15 @@ class AdminController extends Controller
 
     public function refreshIptvResources(IptvResourceSyncService $sync): JsonResponse
     {
+        if ($this->syncIsAsync()) {
+            RefreshIptvResourcesJob::dispatch();
+
+            return response()->json(['data' => [
+                'queued' => true,
+                'message' => 'La actualizacion de recursos quedo en cola y se ejecutara en segundo plano.',
+            ]], 202);
+        }
+
         try {
             $result = $sync->run();
         } catch (\Throwable $exception) {
@@ -292,6 +322,19 @@ class AdminController extends Controller
         }
 
         return response()->json(['data' => $result]);
+    }
+
+    /**
+     * When enabled, the heavy admin syncs are handed to the database queue
+     * (requires QUEUE_CONNECTION=database and a deployed worker). Off by
+     * default so the admin panel keeps receiving inline results.
+     */
+    private function syncIsAsync(): bool
+    {
+        return filter_var(
+            config('pixflix.sync.async', false),
+            FILTER_VALIDATE_BOOLEAN,
+        );
     }
 
     public function iptvProxies(IptvProxyPool $proxyPool): JsonResponse

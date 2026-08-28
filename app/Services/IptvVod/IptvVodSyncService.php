@@ -8,6 +8,7 @@ use App\Models\Title;
 use App\Services\Catalog\TmdbMetadataClient;
 use App\Services\IptvOrg\IptvOrgClient;
 use App\Services\SyncSettings;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -84,7 +85,7 @@ class IptvVodSyncService
             throw new RuntimeException('Ninguna lista VOD activa devolvio contenido reproducible.');
         }
 
-        return DB::transaction(function () use ($movies, $series): array {
+        $result = DB::transaction(function () use ($movies, $series): array {
             $activeTitleIds = [];
             $activeEpisodeIds = [];
 
@@ -209,6 +210,11 @@ class IptvVodSyncService
                 'deactivated' => $deactivatedTitles + $deactivatedEpisodes,
             ];
         });
+
+        // Invalidate cached catalog payloads so the fresh VOD titles show up.
+        Cache::forever('pixflix:catalog-stamp', (string) now()->unix());
+
+        return $result;
     }
 
     /** @return array<int, array<string, mixed>> */

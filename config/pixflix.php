@@ -10,6 +10,7 @@ return [
     ],
     'rate_limit' => [
         'per_minute' => (int) env('PIXFLIX_RATE_LIMIT_PER_MINUTE', 60),
+        'auth_per_minute' => (int) env('PIXFLIX_RATE_LIMIT_AUTH_PER_MINUTE', 240),
     ],
     'catalog' => [
         'primary_url' => env('PIXFLIX_CATALOG_PRIMARY_URL', 'https://zonaapis.arcando.cloud'),
@@ -35,6 +36,9 @@ return [
         'cron_hour' => env('PIXFLIX_SYNC_CRON_HOUR', '04:00'),
         'timezone' => env('PIXFLIX_SYNC_TIMEZONE', 'UTC'),
         'allow_on_demand' => filter_var(env('PIXFLIX_SYNC_ALLOW_ON_DEMAND', false), FILTER_VALIDATE_BOOLEAN),
+        // Queue the admin-triggered IPTV/VOD syncs instead of running them
+        // inside the HTTP request. Needs QUEUE_CONNECTION=database + worker.
+        'async' => filter_var(env('PIXFLIX_SYNC_ASYNC', false), FILTER_VALIDATE_BOOLEAN),
         'lock_seconds' => (int) env('PIXFLIX_SYNC_LOCK_SECONDS', 3600),
         'stale_after_minutes' => (int) env('PIXFLIX_SYNC_STALE_AFTER_MINUTES', 180),
     ],
@@ -47,6 +51,22 @@ return [
         'cache_ttl_seconds' => (int) env('PIXFLIX_STREAM_CACHE_TTL_SECONDS', 1800),
         'languages' => array_values(array_filter(array_map('trim', explode(',', env('PIXFLIX_STREMIO_LANGUAGES', ''))))),
         'addons' => [],
+    ],
+    'streaming' => [
+        // 'php' streams video through PHP-FPM workers; 'xaccel' only signs and
+        // lets nginx fetch and stream the upstream (see deploy/nginx example).
+        'delivery' => env('PIXFLIX_STREAM_DELIVERY', 'php'),
+        'accel_location' => env('PIXFLIX_STREAM_ACCEL_LOCATION', '/internal/upstream'),
+        // External stream proxy (Cloudflare Worker, see deploy/cloudflare/):
+        // when set, RAW media bytes (HLS segments, MP4, live TS) are served
+        // by the Worker instead of this server. Manifests still pass through
+        // the backend so they can be rewritten and re-signed.
+        'proxy_base_url' => env('PIXFLIX_STREAM_PROXY_BASE_URL'),
+        'proxy_secret' => env('PIXFLIX_STREAM_PROXY_SECRET'),
+    ],
+    'cache' => [
+        'catalog_ttl' => (int) env('PIXFLIX_CACHE_CATALOG_TTL', 60),
+        'channels_ttl' => (int) env('PIXFLIX_CACHE_CHANNELS_TTL', 30),
     ],
     'iptv' => [
         'playlist_url' => env('PIXFLIX_IPTV_M3U_URL', 'https://iptv-org.github.io/iptv/index.m3u'),

@@ -1,2 +1,4 @@
 # Ejecutar con: crontab -e
+# El scheduler corre como root o www-data; nice baja la prioridad de CPU de
+# los syncs para que cedan ante el trafico en vivo del servidor.
 * * * * * cd /var/www/pixflix-backend && php artisan schedule:run >> /dev/null 2>&1

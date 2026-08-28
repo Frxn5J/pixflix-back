@@ -24,9 +24,16 @@ class RouteServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-         RateLimiter::for('api', function (Request $request) {
-            return Limit::perMinute(config('pixflix.rate_limit.per_minute', 60))
-                ->by($request->user()?->id ?: $request->ip());
+        // Guests (login, public endpoints) are capped tighter than
+        // authenticated accounts: one NAT'd IP must not starve its users.
+        RateLimiter::for('api', function (Request $request) {
+            if ($request->user() !== null) {
+                return Limit::perMinute((int) config('pixflix.rate_limit.auth_per_minute', 240))
+                    ->by('user:'.$request->user()->id);
+            }
+
+            return Limit::perMinute((int) config('pixflix.rate_limit.per_minute', 60))
+                ->by('guest:'.$request->ip());
         });
 
         $this->routes(function () {

@@ -6,6 +6,8 @@ use App\Models\Episode;
 use App\Models\Title;
 use App\Services\Iptv\IptvProxyPool;
 use App\Services\IptvVod\IptvVodPlayback;
+use App\Services\Streaming\StreamDelivery;
+use App\Services\Streaming\StreamSigner;
 use Illuminate\Http\Client\Response as ClientResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,6 +20,8 @@ class IptvVodStreamController extends Controller
     public function __construct(
         private readonly IptvProxyPool $proxyPool,
         private readonly IptvVodPlayback $playback,
+        private readonly StreamDelivery $delivery,
+        private readonly StreamSigner $signer,
     ) {}
 
     public function __invoke(Request $request, string $kind, int $id): Response|JsonResponse|StreamedResponse
@@ -39,6 +43,12 @@ class IptvVodStreamController extends Controller
             'User-Agent' => 'Pixflix/1.0 IPTV VOD player',
             ...array_intersect_key((array) $resource->stream_headers, array_flip(['User-Agent', 'Referer'])),
         ];
+
+        if ($this->delivery->isAccel() && ! $this->delivery->looksLikeManifest($upstreamTarget)) {
+            // nginx forwards the client's Range/If-Range headers itself.
+            return $this->delivery->redirect($this->proxyPool->wrap($upstreamTarget), $headers);
+        }
+
         foreach (['Range', 'If-Range'] as $header) {
             if ($request->hasHeader($header)) {
                 $headers[$header] = (string) $request->header($header);
@@ -70,6 +80,7 @@ class IptvVodStreamController extends Controller
                 $expires,
                 $upstream->body(),
                 $upstreamTarget,
+                array_intersect_key((array) $resource->stream_headers, array_flip(['User-Agent', 'Referer'])),
             );
 
             return response($body, 200, $this->corsHeaders([
@@ -126,11 +137,12 @@ class IptvVodStreamController extends Controller
         int $expires,
         string $manifest,
         string $baseUrl,
+        array $upstreamHeaders = [],
     ): string {
-        $manifest = preg_replace_callback('/URI="([^"]+)"/i', function (array $matches) use ($request, $kind, $id, $expires, $baseUrl): string {
+        $manifest = preg_replace_callback('/URI="([^"]+)"/i', function (array $matches) use ($request, $kind, $id, $expires, $baseUrl, $upstreamHeaders): string {
             $target = $this->proxyPool->unwrap($this->resolveUrl($baseUrl, $matches[1]));
 
-            return 'URI="'.$this->playback->proxyUrl($request, $kind, $id, $expires, $target).'"';
+            return 'URI="'.$this->mediaUrl($request, $kind, $id, $expires, $target, $upstreamHeaders).'"';
         }, $manifest) ?? $manifest;
 
         $lines = preg_split('/\r?\n/', $manifest) ?: [];
@@ -141,10 +153,30 @@ class IptvVodStreamController extends Controller
             }
 
             $target = $this->proxyPool->unwrap($this->resolveUrl($baseUrl, $trimmed));
-            $lines[$index] = $this->playback->proxyUrl($request, $kind, $id, $expires, $target);
+            $lines[$index] = $this->mediaUrl($request, $kind, $id, $expires, $target, $upstreamHeaders);
         }
 
         return implode("\n", $lines);
+    }
+
+    /**
+     * Routing per manifest entry: raw media bytes go to the external proxy
+     * when configured; playlists stay on this server to keep being rewritten.
+     */
+    private function mediaUrl(Request $request, string $kind, int $id, int $expires, string $target, array $upstreamHeaders): string
+    {
+        if (! $this->delivery->looksLikeManifest($target)) {
+            $external = $this->signer->externalUrl($target, $expires, [
+                'User-Agent' => 'Pixflix/1.0 IPTV VOD player',
+                ...$upstreamHeaders,
+            ]);
+
+            if ($external !== null) {
+                return $external;
+            }
+        }
+
+        return $this->playback->proxyUrl($request, $kind, $id, $expires, $target);
     }
 
     private function resolveUrl(string $baseUrl, string $reference): string

@@ -1,0 +1,24 @@
+; Pixflix API - OPcache tuned for a 2 GB RAM server
+; Drop into /etc/php/8.2/fpm/conf.d/10-opcache.ini
+
+zend_extension=opcache.so
+opcache.enable=1
+opcache.enable_cli=0
+
+; Laravel + vendor tree needs ~8k-16k files cached.
+opcache.memory_consumption=192
+opcache.interned_strings_buffer=16
+opcache.max_accelerated_files=20000
+opcache.max_wasted_percentage=10
+
+; Production: never stat files for changes (deploy with `php artisan
+; config:cache` + reload php-fpm). Set to 1 + revalidate_freq=2 in staging.
+opcache.validate_timestamps=0
+
+opcache.save_comments=1
+opcache.jit=tracing
+opcache.jit_buffer_size=32M
+
+; realpath cache helps file-heavy frameworks.
+realpath_cache_size=4096K
+realpath_cache_ttl=600

@@ -1,0 +1,32 @@
+# Pixflix API - systemd unit for the database queue worker (2 GB RAM server)
+# Install to /etc/systemd/system/pixflix-queue.service
+#
+# This worker processes the heavy admin-triggered syncs (enable
+# PIXFLIX_SYNC_ASYNC=true in .env and set QUEUE_CONNECTION=database).
+# It is nice(1)'d so syncs always yield CPU to the live traffic, and it
+# sleeps 3s between jobs to stay out of the way.
+
+[Unit]
+Description=Pixflix API queue worker
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+Restart=always
+RestartSec=3
+
+WorkingDirectory=/var/www/pixflix-backend
+ExecStart=/usr/bin/nice -n 19 /usr/bin/php8.2 artisan queue:work database \
+    --sleep=3 \
+    --tries=3 \
+    --max-time=3600 \
+    --memory=256 \
+    --timeout=3600
+
+# Stop gracefully between jobs on deploys.
+KillSignal=SIGQUIT
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

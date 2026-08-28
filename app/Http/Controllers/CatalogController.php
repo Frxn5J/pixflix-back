@@ -9,12 +9,25 @@ use App\Models\CatalogSnapshot;
 use App\Models\Title;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Cache;
 
 class CatalogController extends Controller
 {
     public function index(CatalogIndexRequest $request): JsonResponse
     {
         $filters = $request->validated();
+        $key = 'index:'.sha1((string) json_encode([$filters, $request->query('page', 1)]));
+        $cached = $this->rememberCatalog($key, fn (): array => $this->indexPayload($filters));
+
+        return $this->catalogResponse([
+            'data' => $cached['data'],
+            'meta' => $cached['meta'] + $this->snapshotMeta(),
+            'links' => $cached['links'],
+        ]);
+    }
+
+    private function indexPayload(array $filters): array
+    {
         $query = $this->activeTitles();
 
         if (isset($filters['type'])) {
@@ -56,66 +69,75 @@ class CatalogController extends Controller
             ->orderBy('title')
             ->paginate($filters['per_page'] ?? 20);
 
-        return $this->catalogResponse([
+        return [
             'data' => $paginator->getCollection()
                 ->map(fn (Title $title) => TitleResource::make($title)->resolve())
-                ->values(),
+                ->values()->all(),
             'meta' => [
                 'current_page' => $paginator->currentPage(),
                 'last_page' => $paginator->lastPage(),
                 'per_page' => $paginator->perPage(),
                 'total' => $paginator->total(),
-            ] + $this->snapshotMeta(),
+            ],
             'links' => [
                 'next' => $paginator->nextPageUrl(),
                 'prev' => $paginator->previousPageUrl(),
             ],
-        ]);
+        ];
     }
 
     public function featured(): JsonResponse
     {
-        $titles = $this->activeTitles()
-            ->where('category', 'featured')
-            ->orderBy('title')
-            ->limit(12)
-            ->get();
+        $data = $this->rememberCatalog('featured', function (): array {
+            return $this->activeTitles()
+                ->where('category', 'featured')
+                ->orderBy('title')
+                ->limit(12)
+                ->get()
+                ->map(fn (Title $title) => TitleResource::make($title)->resolve())
+                ->values()->all();
+        });
 
         return $this->catalogResponse([
-            'data' => $titles
-                ->map(fn (Title $title) => TitleResource::make($title)->resolve())
-                ->values(),
+            'data' => $data,
             'meta' => $this->snapshotMeta(),
         ]);
     }
 
     public function genres(): JsonResponse
     {
-        $genres = $this->activeTitles()
-            ->pluck('genres')
-            ->flatten()
-            ->filter(fn ($genre): bool => is_string($genre) && $genre !== '')
-            ->unique()
-            ->sort()
-            ->values();
+        $genres = $this->rememberCatalog('genres', function (): array {
+            return $this->activeTitles()
+                ->pluck('genres')
+                ->flatten()
+                ->filter(fn ($genre): bool => is_string($genre) && $genre !== '')
+                ->unique()
+                ->sort()
+                ->values()->all();
+        }, 300);
 
         return $this->catalogResponse(['data' => $genres, 'meta' => $this->snapshotMeta()]);
     }
 
     public function show(string $slug): JsonResponse
     {
-        $title = $this->activeTitles()
-            ->with([
-                'seasons' => fn ($query) => $query->orderBy('number'),
-                'seasons.episodes' => fn ($query) => $query
-                    ->where('is_active', true)
-                    ->orderBy('number'),
-            ])
-            ->where('slug', $slug)
-            ->firstOrFail();
+        $payload = $this->rememberCatalog('title:'.$slug, function () use ($slug): array {
+            $title = $this->activeTitles()
+                ->with([
+                    'seasons' => fn ($query) => $query->orderBy('number'),
+                    'seasons.episodes' => fn ($query) => $query
+                        ->where('is_active', true)
+                        ->orderBy('number'),
+                ])
+                ->where('slug', $slug)
+                ->firstOrFail();
+
+            return ['data' => TitleDetailResource::make($title)->resolve()];
+        });
 
         return $this->catalogResponse([
-            'data' => TitleDetailResource::make($title)->resolve(),
+            'data' => $payload['data'],
+            'meta' => $this->snapshotMeta(),
         ]);
     }
 
@@ -161,6 +183,26 @@ class CatalogController extends Controller
         }
 
         return array_values(array_unique(array_map('intval', $versions)));
+    }
+
+    /**
+     * Caches hot catalog payloads. The key embeds the snapshot version plus a
+     * stamp bumped by the VOD/catalog syncs, so fresh imports invalidate the
+     * cache without any explicit purging. Set PIXFLIX_CACHE_CATALOG_TTL=0 to
+     * disable (used by the test-suite).
+     */
+    private function rememberCatalog(string $key, callable $producer, ?int $ttl = null): array
+    {
+        $ttl ??= (int) config('pixflix.cache.catalog_ttl', 60);
+
+        if ($ttl <= 0) {
+            return $producer();
+        }
+
+        $stamp = ($this->snapshotMeta()['snapshot_version'] ?? 'none')
+            .':'.(string) Cache::get('pixflix:catalog-stamp', '0');
+
+        return Cache::remember('pixflix:catalog:'.$key.':'.$stamp, $ttl, $producer);
     }
 
     private function snapshotMeta(): array
