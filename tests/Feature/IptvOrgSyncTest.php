@@ -49,6 +49,7 @@ M3U),
                     'url' => 'https://example.test/mx.m3u',
                     'country' => 'MX',
                     'language' => 'spa',
+                    'use_proxy' => false,
                     'enabled' => true,
                     'priority' => 1,
                 ],
@@ -80,7 +81,11 @@ M3U),
 
         $this->artisan('pixflix:sync-iptv')->assertSuccessful();
 
-        $this->assertDatabaseHas('channels', ['external_id' => 'MX.spa']);
+        $this->assertDatabaseHas('channels', [
+            'external_id' => 'MX.spa',
+            'source_playlist_id' => 'mx-spanish',
+            'use_proxy' => false,
+        ]);
         $this->assertDatabaseMissing('channels', ['external_id' => 'MX.eng']);
         $this->assertDatabaseHas('channels', ['external_id' => 'pluto-1', 'country' => 'MX']);
     }

@@ -110,6 +110,7 @@ class AdminTest extends TestCase
                     'url' => 'https://streams.example/sports.m3u',
                     'country' => 'mx',
                     'language' => 'SPA',
+                    'use_proxy' => false,
                     'enabled' => true,
                     'priority' => 2,
                 ],
@@ -125,8 +126,10 @@ class AdminTest extends TestCase
             ],
         ])->assertOk()
             ->assertJsonPath('data.playlists.0.id', 'global')
+            ->assertJsonPath('data.playlists.0.use_proxy', true)
             ->assertJsonPath('data.playlists.1.country', 'MX')
-            ->assertJsonPath('data.playlists.1.language', 'spa');
+            ->assertJsonPath('data.playlists.1.language', 'spa')
+            ->assertJsonPath('data.playlists.1.use_proxy', false);
 
         $this->withToken($token)->getJson('/api/v1/admin/iptv-playlists')
             ->assertOk()

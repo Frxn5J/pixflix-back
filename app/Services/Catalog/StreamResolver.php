@@ -93,6 +93,10 @@ class StreamResolver
         ?string $language,
         string $fixtureKey,
     ): array {
+        if (! app()->environment('testing') && (bool) config('pixflix.catalog.use_fixtures', false)) {
+            return $this->fixtureStreams($fixtureKey);
+        }
+
         $languages = $language === null || trim($language) === '' ? null : $language;
         $cacheKey = $key.':'.sha1($languages ?? '*');
         $cachedStreams = $this->usable($cached, $languages);
@@ -228,8 +232,11 @@ class StreamResolver
             [
                 'quality' => '1080p',
                 'language' => 'Latino',
-                'hls' => "https://pixflix-fixture.test/hls/{$key}.m3u8",
-                'mp4' => "https://pixflix-fixture.test/mp4/{$key}.mp4",
+                'hls' => (string) config(
+                    'pixflix.catalog.fixture_hls_url',
+                    'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+                ),
+                'mp4' => null,
             ],
         ];
     }

@@ -113,6 +113,37 @@ class ChannelTest extends TestCase
         );
     }
 
+    public function test_channel_can_bypass_the_proxy_when_its_playlist_disables_it(): void
+    {
+        [$token] = $this->subscriber();
+        $channel = Channel::query()->create([
+            'name' => 'Canal directo',
+            'category' => 'Noticias',
+            'stream_url' => 'https://cdn.test/direct.m3u8',
+            'source_playlist_id' => 'playlist-directa',
+            'use_proxy' => false,
+            'is_active' => true,
+        ]);
+        Setting::query()->create([
+            'key' => 'iptv.proxies',
+            'value' => json_encode([[
+                'id' => 'proxy-one',
+                'name' => 'Proxy uno',
+                'base_url' => 'https://proxy-one.test/?token=one',
+                'enabled' => true,
+                'priority' => 1,
+            ]]),
+        ]);
+        Cache::forget('pixflix:setting:iptv.proxies');
+
+        $streamUrl = $this->withToken($token)
+            ->getJson("/api/v1/channels/{$channel->id}")
+            ->assertOk()
+            ->json('data.stream.hls');
+
+        $this->assertSame('https://cdn.test/direct.m3u8', $streamUrl);
+    }
+
     public function test_proxy_urls_inside_manifests_are_unwrapped_before_the_next_fetch(): void
     {
         [$token] = $this->subscriber();

@@ -191,6 +191,7 @@ class AdminController extends Controller
             'playlists.*.url' => ['required', 'url:http,https', 'max:2048'],
             'playlists.*.country' => ['nullable', 'string', 'max:10'],
             'playlists.*.language' => ['nullable', 'string', 'max:80'],
+            'playlists.*.use_proxy' => ['sometimes', 'boolean'],
             'playlists.*.enabled' => ['required', 'boolean'],
             'playlists.*.priority' => ['required', 'integer', 'between:1,10000'],
         ]);
@@ -202,6 +203,7 @@ class AdminController extends Controller
                 'url' => trim($playlist['url']),
                 'country' => $this->nullableUpper($playlist['country'] ?? null),
                 'language' => $this->nullableLower($playlist['language'] ?? null),
+                'use_proxy' => (bool) ($playlist['use_proxy'] ?? true),
                 'enabled' => (bool) $playlist['enabled'],
                 'priority' => (int) $playlist['priority'],
             ])
@@ -210,6 +212,11 @@ class AdminController extends Controller
             ->all();
 
         $this->settings->put('iptv.playlists', $playlists);
+        foreach ($playlists as $playlist) {
+            Channel::query()
+                ->where('source_playlist_id', $playlist['id'])
+                ->update(['use_proxy' => $playlist['use_proxy']]);
+        }
 
         return response()->json(['data' => [
             'playlists' => $playlists,
@@ -542,12 +549,22 @@ class AdminController extends Controller
                 'url' => (string) config('pixflix.iptv.playlist_url'),
                 'country' => $this->nullableUpper(config('pixflix.iptv.country')),
                 'language' => null,
+                'use_proxy' => true,
                 'enabled' => true,
                 'priority' => 1,
             ]];
         }
 
-        return is_array($playlists) ? array_values($playlists) : [];
+        return is_array($playlists)
+            ? collect($playlists)
+                ->filter(fn (mixed $playlist): bool => is_array($playlist) && ! empty($playlist['url']))
+                ->map(fn (array $playlist): array => [
+                    ...$playlist,
+                    'use_proxy' => (bool) ($playlist['use_proxy'] ?? true),
+                ])
+                ->values()
+                ->all()
+            : [];
     }
 
     private function iptvVodPlaylistsData(): array

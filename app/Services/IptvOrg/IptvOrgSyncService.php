@@ -51,6 +51,7 @@ class IptvOrgSyncService
                 $seen[$id] = true;
                 $rows[] = [
                     'external_id' => $id,
+                    'source_playlist_id' => trim((string) ($playlist['id'] ?? 'iptv-playlist')),
                     'name' => $entry['name'],
                     'logo' => $entry['logo'],
                     'category' => $entry['category'],
@@ -59,6 +60,7 @@ class IptvOrgSyncService
                     'stream_url' => $entry['stream_url'],
                     // upsert bypasses Eloquent casts, so persist the JSON explicitly.
                     'stream_headers' => json_encode($entry['stream_headers'], JSON_THROW_ON_ERROR),
+                    'use_proxy' => (bool) ($playlist['use_proxy'] ?? true),
                     'is_active' => true,
                     'updated_at' => now(),
                     'created_at' => now(),
@@ -81,7 +83,7 @@ class IptvOrgSyncService
                 Channel::query()->upsert(
                     $chunk,
                     ['external_id'],
-                    ['name', 'logo', 'category', 'country', 'language', 'stream_url', 'stream_headers', 'is_active', 'updated_at'],
+                    ['source_playlist_id', 'name', 'logo', 'category', 'country', 'language', 'stream_url', 'stream_headers', 'use_proxy', 'is_active', 'updated_at'],
                 );
             }
 
@@ -111,8 +113,10 @@ class IptvOrgSyncService
         if ($playlists === null) {
             return [[
                 'url' => (string) config('pixflix.iptv.playlist_url'),
+                'id' => 'iptv-org-default',
                 'country' => config('pixflix.iptv.country'),
                 'language' => null,
+                'use_proxy' => true,
                 'enabled' => true,
             ]];
         }

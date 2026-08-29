@@ -11,11 +11,15 @@ class Channel extends Model
     use HasFactory;
 
     protected $fillable = [
-        'external_id', 'name', 'logo', 'category', 'country', 'language',
-        'stream_url', 'stream_headers', 'is_active',
+        'external_id', 'source_playlist_id', 'name', 'logo', 'category', 'country', 'language',
+        'stream_url', 'stream_headers', 'use_proxy', 'is_active',
     ];
 
-    protected $casts = ['is_active' => 'boolean', 'stream_headers' => 'array'];
+    protected $casts = [
+        'is_active' => 'boolean',
+        'use_proxy' => 'boolean',
+        'stream_headers' => 'array',
+    ];
 
     public function epgEntries(): HasMany
     {

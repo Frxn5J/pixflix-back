@@ -21,6 +21,10 @@ class IptvVodPlayback
             return [];
         }
 
+        if ($this->usesLocalFixtures()) {
+            return $this->fixtureStreams();
+        }
+
         return [$this->streamData(
             $request,
             'title',
@@ -42,6 +46,10 @@ class IptvVodPlayback
 
         if (! $episode->is_active || ! $title?->is_active || $episode->stream_url === null) {
             return [];
+        }
+
+        if ($this->usesLocalFixtures()) {
+            return $this->fixtureStreams();
         }
 
         return [$this->streamData(
@@ -110,5 +118,24 @@ class IptvVodPlayback
     private function signature(string $kind, int $id, int $expires, string $target): string
     {
         return hash_hmac('sha256', "{$kind}|{$id}|{$expires}|{$target}", (string) config('app.key'));
+    }
+
+    private function usesLocalFixtures(): bool
+    {
+        return ! app()->environment('testing')
+            && (bool) config('pixflix.catalog.use_fixtures', false);
+    }
+
+    private function fixtureStreams(): array
+    {
+        return [[
+            'quality' => '1080p',
+            'language' => 'Latino',
+            'hls' => (string) config(
+                'pixflix.catalog.fixture_hls_url',
+                'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+            ),
+            'mp4' => null,
+        ]];
     }
 }

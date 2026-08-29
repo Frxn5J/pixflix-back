@@ -258,6 +258,10 @@ class ChannelController extends Controller
             return null;
         }
 
+        if (! $channel->use_proxy) {
+            return $channel->stream_url;
+        }
+
         $expires = now()->addHours(2)->timestamp;
         $target = $this->proxyPool->unwrap($channel->stream_url);
 

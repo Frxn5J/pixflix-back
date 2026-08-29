@@ -17,6 +17,16 @@ return [
         'fallback_url' => env('PIXFLIX_CATALOG_FALLBACK_URL', 'https://apiprorescue.testaacc.workers.dev'),
         'timeout_ms' => (int) env('PIXFLIX_CATALOG_TIMEOUT_MS', 8000),
         'verify_ssl' => filter_var(env('PIXFLIX_CATALOG_VERIFY_SSL', true), FILTER_VALIDATE_BOOLEAN),
+        // Keep local seeded content playable without requiring an external
+        // catalog provider. Production remains disabled unless explicitly set.
+        'use_fixtures' => filter_var(
+            env('PIXFLIX_CATALOG_USE_FIXTURES', env('APP_ENV', 'production') === 'local'),
+            FILTER_VALIDATE_BOOLEAN,
+        ),
+        'fixture_hls_url' => env(
+            'PIXFLIX_CATALOG_FIXTURE_HLS_URL',
+            'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+        ),
         'retry_attempts' => (int) env('PIXFLIX_CATALOG_RETRY_ATTEMPTS', 3),
         'retry_delays_ms' => array_values(array_map('intval', explode(',', env('PIXFLIX_CATALOG_RETRY_DELAYS_MS', '2000,8000,30000')))),
         'circuit_threshold' => (int) env('PIXFLIX_CATALOG_CIRCUIT_THRESHOLD', 3),
