@@ -13,7 +13,7 @@ return [
     |
     */
 
-    'default' => env('QUEUE_CONNECTION', 'sync'),
+    'default' => env('QUEUE_CONNECTION', 'redis'),
 
     /*
     |--------------------------------------------------------------------------
@@ -65,10 +65,10 @@ return [
         'redis' => [
             'driver' => 'redis',
             'connection' => 'default',
-            'queue' => env('REDIS_QUEUE', 'default'),
-            'retry_after' => 90,
-            'block_for' => null,
-            'after_commit' => false,
+            'queue' => env('DRAGONFLY_QUEUE', env('REDIS_QUEUE', 'default')),
+            'retry_after' => (int) env('QUEUE_RETRY_AFTER', 3600),
+            'block_for' => (int) env('QUEUE_BLOCK_FOR', 5),
+            'after_commit' => true,
         ],
 
     ],
@@ -85,7 +85,7 @@ return [
     */
 
     'batching' => [
-        'database' => env('DB_CONNECTION', 'mysql'),
+        'database' => env('DB_CONNECTION', 'pgsql'),
         'table' => 'job_batches',
     ],
 
@@ -102,7 +102,7 @@ return [
 
     'failed' => [
         'driver' => env('QUEUE_FAILED_DRIVER', 'database-uuids'),
-        'database' => env('DB_CONNECTION', 'mysql'),
+        'database' => env('DB_CONNECTION', 'pgsql'),
         'table' => 'failed_jobs',
     ],
 

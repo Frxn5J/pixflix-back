@@ -12,7 +12,10 @@ class TrustProxies extends Middleware
      *
      * @var array<int, string>|string|null
      */
-    protected $proxies;
+    // Coolify/Traefik and the traditional Nginx setup terminate TLS in front
+    // of Laravel. Trust the forwarded chain so secure URLs, cookies and the
+    // per-IP rate limiter work correctly behind the platform proxy.
+    protected $proxies = '*';
 
     /**
      * The headers that should be used to detect proxies.

@@ -1,0 +1,266 @@
+services:
+  # Coolify should expose this service on port 8080. It is stateless and can
+  # be scaled horizontally; all shared state lives in PostgreSQL/Dragonfly.
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env
+    expose:
+      - "8080"
+    environment:
+      APP_NAME: ${APP_NAME:-Pixflix}
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_KEY: ${APP_KEY}
+      APP_URL: ${APP_URL}
+      APP_TIMEZONE: ${APP_TIMEZONE:-UTC}
+      APP_LOCALE: ${APP_LOCALE:-es-419}
+      APP_FALLBACK_LOCALE: ${APP_FALLBACK_LOCALE:-es-419}
+      APP_MAINTENANCE_DRIVER: cache
+      APP_MAINTENANCE_STORE: redis
+      LOG_CHANNEL: stderr
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_DATABASE: ${POSTGRES_DB:-pixflix}
+      DB_USERNAME: ${POSTGRES_USER:-pixflix}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_SSLMODE: ${DB_SSLMODE:-prefer}
+      DB_CONNECT_TIMEOUT: ${DB_CONNECT_TIMEOUT:-5}
+      DRAGONFLY_CLIENT: phpredis
+      DRAGONFLY_HOST: dragonfly
+      DRAGONFLY_PORT: "6379"
+      DRAGONFLY_PASSWORD: ${DRAGONFLY_PASSWORD}
+      DRAGONFLY_DB: "0"
+      DRAGONFLY_CACHE_DB: "1"
+      DRAGONFLY_READ_TIMEOUT: ${DRAGONFLY_READ_TIMEOUT:-5}
+      DRAGONFLY_CONNECT_TIMEOUT: ${DRAGONFLY_CONNECT_TIMEOUT:-5}
+      DRAGONFLY_RETRY_INTERVAL: ${DRAGONFLY_RETRY_INTERVAL:-100}
+      DRAGONFLY_QUEUE: ${DRAGONFLY_QUEUE:-default}
+      CACHE_STORE: redis
+      SESSION_DRIVER: redis
+      SESSION_STORE: redis
+      SESSION_SECURE_COOKIE: "true"
+      SESSION_SAME_SITE: ${SESSION_SAME_SITE:-lax}
+      QUEUE_CONNECTION: redis
+      QUEUE_RETRY_AFTER: ${QUEUE_RETRY_AFTER:-3600}
+      QUEUE_BLOCK_FOR: ${QUEUE_BLOCK_FOR:-5}
+      BROADCAST_DRIVER: "null"
+      FILESYSTEM_DISK: ${FILESYSTEM_DISK:-local}
+      PIXFLIX_STREAM_DELIVERY: ${PIXFLIX_STREAM_DELIVERY:-xaccel}
+      PIXFLIX_STREAM_ACCEL_LOCATION: ${PIXFLIX_STREAM_ACCEL_LOCATION:-/internal/upstream}
+      PIXFLIX_STREAM_PROXY_BASE_URL: ${PIXFLIX_STREAM_PROXY_BASE_URL:-}
+      PIXFLIX_STREAM_PROXY_SECRET: ${PIXFLIX_STREAM_PROXY_SECRET:-}
+      PIXFLIX_CACHE_CATALOG_TTL: ${PIXFLIX_CACHE_CATALOG_TTL:-60}
+      PIXFLIX_CACHE_CHANNELS_TTL: ${PIXFLIX_CACHE_CHANNELS_TTL:-30}
+      PIXFLIX_RATE_LIMIT_PER_MINUTE: ${PIXFLIX_RATE_LIMIT_PER_MINUTE:-60}
+      PIXFLIX_RATE_LIMIT_AUTH_PER_MINUTE: ${PIXFLIX_RATE_LIMIT_AUTH_PER_MINUTE:-240}
+      PIXFLIX_AUTH_TOKEN_NAME: ${PIXFLIX_AUTH_TOKEN_NAME:-pwa}
+      PIXFLIX_PWA_FORCE_UPDATE: ${PIXFLIX_PWA_FORCE_UPDATE:-false}
+      PIXFLIX_CATALOG_PRIMARY_URL: ${PIXFLIX_CATALOG_PRIMARY_URL:-https://zonaapis.arcando.cloud}
+      PIXFLIX_CATALOG_FALLBACK_URL: ${PIXFLIX_CATALOG_FALLBACK_URL:-https://apiprorescue.testaacc.workers.dev}
+      PIXFLIX_CATALOG_VERIFY_SSL: ${PIXFLIX_CATALOG_VERIFY_SSL:-true}
+      PIXFLIX_CATALOG_USE_FIXTURES: ${PIXFLIX_CATALOG_USE_FIXTURES:-false}
+      PIXFLIX_CATALOG_RETRY_ATTEMPTS: ${PIXFLIX_CATALOG_RETRY_ATTEMPTS:-3}
+      PIXFLIX_CATALOG_TIMEOUT_MS: ${PIXFLIX_CATALOG_TIMEOUT_MS:-8000}
+      PIXFLIX_TMDB_API_KEY: ${PIXFLIX_TMDB_API_KEY:-}
+      PIXFLIX_TMDB_ACCESS_TOKEN: ${PIXFLIX_TMDB_ACCESS_TOKEN:-}
+      PIXFLIX_TMDB_LANGUAGE: ${PIXFLIX_TMDB_LANGUAGE:-es-MX}
+      PIXFLIX_TMDB_TIMEOUT_SECONDS: ${PIXFLIX_TMDB_TIMEOUT_SECONDS:-8}
+      PIXFLIX_TMDB_VERIFY_SSL: ${PIXFLIX_TMDB_VERIFY_SSL:-true}
+      PIXFLIX_SYNC_CRON_HOUR: ${PIXFLIX_SYNC_CRON_HOUR:-04:00}
+      PIXFLIX_SYNC_TIMEZONE: ${PIXFLIX_SYNC_TIMEZONE:-UTC}
+      PIXFLIX_SYNC_ALLOW_ON_DEMAND: ${PIXFLIX_SYNC_ALLOW_ON_DEMAND:-false}
+      PIXFLIX_SYNC_LOCK_SECONDS: ${PIXFLIX_SYNC_LOCK_SECONDS:-3600}
+      PIXFLIX_SYNC_STALE_AFTER_MINUTES: ${PIXFLIX_SYNC_STALE_AFTER_MINUTES:-180}
+      PIXFLIX_TRIAL_PLAN_ID: ${PIXFLIX_TRIAL_PLAN_ID:-}
+      PIXFLIX_STREMIO_ENABLED: ${PIXFLIX_STREMIO_ENABLED:-false}
+      PIXFLIX_STREMIO_TIMEOUT_SECONDS: ${PIXFLIX_STREMIO_TIMEOUT_SECONDS:-10}
+      PIXFLIX_STREAM_CACHE_TTL_SECONDS: ${PIXFLIX_STREAM_CACHE_TTL_SECONDS:-1800}
+      PIXFLIX_IPTV_M3U_URL: ${PIXFLIX_IPTV_M3U_URL:-https://iptv-org.github.io/iptv/index.m3u}
+      PIXFLIX_IPTV_COUNTRY: ${PIXFLIX_IPTV_COUNTRY:-}
+      PIXFLIX_IPTV_MAX_CHANNELS: ${PIXFLIX_IPTV_MAX_CHANNELS:-}
+      PIXFLIX_IPTV_TIMEOUT_SECONDS: ${PIXFLIX_IPTV_TIMEOUT_SECONDS:-30}
+      PIXFLIX_IPTV_VERIFY_SSL: ${PIXFLIX_IPTV_VERIFY_SSL:-true}
+      PIXFLIX_IPTV_SYNC_CRON: ${PIXFLIX_IPTV_SYNC_CRON:-03:30}
+      MAIL_MAILER: ${MAIL_MAILER:-log}
+      MAIL_HOST: ${MAIL_HOST:-}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_ENCRYPTION: ${MAIL_ENCRYPTION:-tls}
+      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-no-reply@example.com}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-Pixflix}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      AWS_BUCKET: ${AWS_BUCKET:-}
+      AWS_URL: ${AWS_URL:-}
+      AWS_ENDPOINT: ${AWS_ENDPOINT:-}
+      AWS_USE_PATH_STYLE_ENDPOINT: ${AWS_USE_PATH_STYLE_ENDPOINT:-false}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+      SANCTUM_STATEFUL_DOMAINS: ${SANCTUM_STATEFUL_DOMAINS}
+      SANCTUM_TOKEN_EXPIRATION: ${SANCTUM_TOKEN_EXPIRATION:-43200}
+      PIXFLIX_SYNC_ASYNC: "true"
+      RUN_MIGRATIONS: "false"
+      RUN_STORAGE_LINK: ${RUN_STORAGE_LINK:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dragonfly:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/api/v1/health/ready >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 8s
+      start_period: 45s
+      retries: 5
+    stop_grace_period: 30s
+    deploy:
+      replicas: ${APP_REPLICAS:-2}
+      resources:
+        limits:
+          cpus: ${APP_CPU_LIMIT:-2.0}
+          memory: ${APP_MEMORY_LIMIT:-1024M}
+
+  # Run at least two workers when catalog synchronization is enabled. The
+  # Redis-compatible queue protocol is served by Dragonfly.
+  queue:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env
+    command: ["php", "artisan", "queue:work", "redis", "--queue=high,default,low", "--sleep=1", "--tries=3", "--timeout=3500", "--max-time=3600", "--memory=256"]
+    environment:
+      APP_NAME: ${APP_NAME:-Pixflix}
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_KEY: ${APP_KEY}
+      APP_URL: ${APP_URL}
+      LOG_CHANNEL: stderr
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_DATABASE: ${POSTGRES_DB:-pixflix}
+      DB_USERNAME: ${POSTGRES_USER:-pixflix}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DRAGONFLY_CLIENT: phpredis
+      DRAGONFLY_HOST: dragonfly
+      DRAGONFLY_PORT: "6379"
+      DRAGONFLY_PASSWORD: ${DRAGONFLY_PASSWORD}
+      DRAGONFLY_DB: "0"
+      DRAGONFLY_CACHE_DB: "1"
+      DRAGONFLY_READ_TIMEOUT: ${DRAGONFLY_READ_TIMEOUT:-5}
+      DRAGONFLY_CONNECT_TIMEOUT: ${DRAGONFLY_CONNECT_TIMEOUT:-5}
+      DRAGONFLY_QUEUE: ${DRAGONFLY_QUEUE:-default}
+      QUEUE_CONNECTION: redis
+      QUEUE_RETRY_AFTER: ${QUEUE_RETRY_AFTER:-3600}
+      QUEUE_BLOCK_FOR: ${QUEUE_BLOCK_FOR:-5}
+      CACHE_STORE: redis
+      SESSION_DRIVER: redis
+      SESSION_STORE: redis
+      BROADCAST_DRIVER: "null"
+      FILESYSTEM_DISK: ${FILESYSTEM_DISK:-local}
+      PIXFLIX_SYNC_ASYNC: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dragonfly:
+        condition: service_started
+    stop_grace_period: 60s
+    deploy:
+      replicas: ${QUEUE_REPLICAS:-2}
+      resources:
+        limits:
+          cpus: ${QUEUE_CPU_LIMIT:-1.0}
+          memory: ${QUEUE_MEMORY_LIMIT:-768M}
+
+  # Keep exactly one scheduler replica to avoid duplicate scheduled commands.
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env
+    command: ["php", "artisan", "schedule:work"]
+    environment:
+      APP_NAME: ${APP_NAME:-Pixflix}
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_KEY: ${APP_KEY}
+      APP_URL: ${APP_URL}
+      LOG_CHANNEL: stderr
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_DATABASE: ${POSTGRES_DB:-pixflix}
+      DB_USERNAME: ${POSTGRES_USER:-pixflix}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DRAGONFLY_CLIENT: phpredis
+      DRAGONFLY_HOST: dragonfly
+      DRAGONFLY_PORT: "6379"
+      DRAGONFLY_PASSWORD: ${DRAGONFLY_PASSWORD}
+      DRAGONFLY_DB: "0"
+      DRAGONFLY_CACHE_DB: "1"
+      DRAGONFLY_READ_TIMEOUT: ${DRAGONFLY_READ_TIMEOUT:-5}
+      DRAGONFLY_CONNECT_TIMEOUT: ${DRAGONFLY_CONNECT_TIMEOUT:-5}
+      CACHE_STORE: redis
+      SESSION_DRIVER: redis
+      SESSION_STORE: redis
+      QUEUE_CONNECTION: redis
+      BROADCAST_DRIVER: "null"
+      FILESYSTEM_DISK: ${FILESYSTEM_DISK:-local}
+      PIXFLIX_SYNC_ASYNC: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dragonfly:
+        condition: service_started
+    stop_grace_period: 60s
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-pixflix}
+      POSTGRES_USER: ${POSTGRES_USER:-pixflix}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    stop_grace_period: 60s
+
+  dragonfly:
+    image: ${DRAGONFLY_IMAGE:-docker.dragonflydb.io/dragonflydb/dragonfly:v1.40.1}
+    restart: unless-stopped
+    command:
+      - --requirepass=${DRAGONFLY_PASSWORD}
+      - --maxmemory=${DRAGONFLY_MAXMEMORY:-2gb}
+      - --cache_mode=${DRAGONFLY_CACHE_MODE:-false}
+    ulimits:
+      memlock: -1
+    volumes:
+      - dragonfly_data:/data
+    stop_grace_period: 60s
+
+volumes:
+  postgres_data:
+  dragonfly_data:

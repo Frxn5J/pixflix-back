@@ -47,7 +47,8 @@ return [
         'timezone' => env('PIXFLIX_SYNC_TIMEZONE', 'UTC'),
         'allow_on_demand' => filter_var(env('PIXFLIX_SYNC_ALLOW_ON_DEMAND', false), FILTER_VALIDATE_BOOLEAN),
         // Queue the admin-triggered IPTV/VOD syncs instead of running them
-        // inside the HTTP request. Needs QUEUE_CONNECTION=database + worker.
+        // inside the HTTP request. Needs Dragonfly-backed QUEUE_CONNECTION=redis
+        // plus a deployed worker.
         'async' => filter_var(env('PIXFLIX_SYNC_ASYNC', false), FILTER_VALIDATE_BOOLEAN),
         'lock_seconds' => (int) env('PIXFLIX_SYNC_LOCK_SECONDS', 3600),
         'stale_after_minutes' => (int) env('PIXFLIX_SYNC_STALE_AFTER_MINUTES', 180),

@@ -29,6 +29,22 @@ class ApiHealthTest extends TestCase
         $response->assertHeader('X-Request-Id', 'contract-test-01');
     }
 
+    public function test_liveness_endpoint_is_dependency_free(): void
+    {
+        $this->getJson('/up')
+            ->assertOk()
+            ->assertJsonPath('status', 'ok');
+    }
+
+    public function test_readiness_checks_database_and_cache(): void
+    {
+        $this->getJson('/api/v1/health/ready')
+            ->assertOk()
+            ->assertJsonPath('data.status', 'ok')
+            ->assertJsonPath('data.checks.database', 'ok')
+            ->assertJsonPath('data.checks.cache', 'ok');
+    }
+
     public function test_api_errors_use_the_canonical_error_contract(): void
     {
         $response = $this->getJson('/api/v1/does-not-exist');

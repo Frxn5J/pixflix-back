@@ -333,7 +333,7 @@ class AdminController extends Controller
 
     /**
      * When enabled, the heavy admin syncs are handed to the database queue
-     * (requires QUEUE_CONNECTION=database and a deployed worker). Off by
+     * (requires QUEUE_CONNECTION=redis with Dragonfly and a deployed worker). Off by
      * default so the admin panel keeps receiving inline results.
      */
     private function syncIsAsync(): bool

@@ -140,8 +140,14 @@ return [
     */
 
     'maintenance' => [
-        'driver' => 'file',
-        // 'store' => 'redis',
+        'driver' => env(
+            'APP_MAINTENANCE_DRIVER',
+            env('APP_ENV', 'production') === 'production' ? 'cache' : 'file',
+        ),
+        'store' => env(
+            'APP_MAINTENANCE_STORE',
+            env('CACHE_STORE', env('CACHE_DRIVER', 'redis')),
+        ),
     ],
 
     /*

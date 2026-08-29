@@ -25,6 +25,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
     Route::get('/health', HealthController::class)->name('api.v1.health');
+    Route::get('/health/ready', [HealthController::class, 'readiness'])->name('api.v1.health.ready');
 
     Route::prefix('auth')->group(function () {
         Route::post('/login', [AuthController::class, 'login'])
