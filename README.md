@@ -109,6 +109,11 @@ de archivos local no debe usarse para datos que deban sobrevivir a una nueva
 réplica; configura `FILESYSTEM_DISK=s3` y las variables `AWS_*` si la
 aplicación empieza a guardar archivos.
 
+En el primer arranque con `RUN_CACHE_WARMUP=true`, el contenedor web encola un
+job y el worker calienta en segundo plano las respuestas de catálogo, destacados,
+géneros y canales. El lock distribuido evita duplicarlo entre réplicas. Para
+repetirlo manualmente: `php artisan pixflix:warm-api-cache --force`.
+
 Health checks:
 
 - `/up`: liveness, no depende de la base de datos.
@@ -124,7 +129,9 @@ de Coolify.
 ## Tareas programadas
 
 La sincronización de catálogo, canales IPTV y expiración de pruebas se ejecuta
-con el scheduler de Laravel. En Coolify, el servicio `scheduler` ya ejecuta
+con el scheduler de Laravel. Las listas IPTV (canales y VOD configurados) se
+actualizan automáticamente cada 3 horas, con lock distribuido para que sólo
+una réplica lo ejecute. En Coolify, el servicio `scheduler` ya ejecuta
 `php artisan schedule:work`. En una instalación tradicional, instala
 `deploy/pixflix-schedule.cron.example` en el crontab del usuario de la
 aplicación:

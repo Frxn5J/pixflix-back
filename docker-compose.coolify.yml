@@ -87,7 +87,6 @@ services:
       PIXFLIX_IPTV_MAX_CHANNELS: ${PIXFLIX_IPTV_MAX_CHANNELS:-}
       PIXFLIX_IPTV_TIMEOUT_SECONDS: ${PIXFLIX_IPTV_TIMEOUT_SECONDS:-30}
       PIXFLIX_IPTV_VERIFY_SSL: ${PIXFLIX_IPTV_VERIFY_SSL:-true}
-      PIXFLIX_IPTV_SYNC_CRON: ${PIXFLIX_IPTV_SYNC_CRON:-03:30}
       MAIL_MAILER: ${MAIL_MAILER:-log}
       MAIL_HOST: ${MAIL_HOST:-}
       MAIL_PORT: ${MAIL_PORT:-587}
@@ -109,6 +108,7 @@ services:
       PIXFLIX_SYNC_ASYNC: "true"
       RUN_MIGRATIONS: "false"
       RUN_STORAGE_LINK: ${RUN_STORAGE_LINK:-false}
+      RUN_CACHE_WARMUP: ${RUN_CACHE_WARMUP:-true}
     depends_on:
       postgres:
         condition: service_healthy
@@ -171,6 +171,7 @@ services:
       BROADCAST_DRIVER: "null"
       FILESYSTEM_DISK: ${FILESYSTEM_DISK:-local}
       PIXFLIX_SYNC_ASYNC: "true"
+      RUN_CACHE_WARMUP: "false"
     depends_on:
       postgres:
         condition: service_healthy
@@ -223,6 +224,7 @@ services:
       BROADCAST_DRIVER: "null"
       FILESYSTEM_DISK: ${FILESYSTEM_DISK:-local}
       PIXFLIX_SYNC_ASYNC: "true"
+      RUN_CACHE_WARMUP: "false"
     depends_on:
       postgres:
         condition: service_healthy

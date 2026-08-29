@@ -20,4 +20,10 @@ if [ "${RUN_STORAGE_LINK:-false}" = "true" ]; then
     php artisan storage:link || true
 fi
 
+# Only the first web deployment should enqueue this. The command is quick and
+# the actual DB work is performed by the Dragonfly-backed queue worker.
+if [ "${RUN_CACHE_WARMUP:-false}" = "true" ]; then
+    php artisan pixflix:warm-api-cache
+fi
+
 exec "$@"

@@ -24,7 +24,8 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping()
             ->onOneServer();
         $schedule->command('pixflix:sync-iptv-resources')
-            ->hourly()
+            ->everyThreeHours()
+            ->timezone((string) $settings->get('sync.timezone', config('pixflix.sync.timezone', 'UTC')))
             ->withoutOverlapping()
             ->onOneServer();
     }

@@ -86,6 +86,5 @@ return [
         'max_channels' => env('PIXFLIX_IPTV_MAX_CHANNELS') !== null ? (int) env('PIXFLIX_IPTV_MAX_CHANNELS') : null,
         'timeout_seconds' => (int) env('PIXFLIX_IPTV_TIMEOUT_SECONDS', 30),
         'verify_ssl' => filter_var(env('PIXFLIX_IPTV_VERIFY_SSL', true), FILTER_VALIDATE_BOOLEAN),
-        'sync_cron' => env('PIXFLIX_IPTV_SYNC_CRON', '03:30'),
     ],
 ];

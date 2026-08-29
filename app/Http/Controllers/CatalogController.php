@@ -26,6 +26,29 @@ class CatalogController extends Controller
         ]);
     }
 
+    /**
+     * Warm the most common catalog responses after the first deployment.
+     * Authentication and subscription middleware are intentionally bypassed:
+     * this method is called only by the internal queue job.
+     *
+     * @return array<string, mixed>
+     */
+    public function warmCache(): array
+    {
+        $this->rememberCatalog(
+            'index:'.sha1((string) json_encode([[], 1])),
+            fn (): array => $this->indexPayload([]),
+        );
+        $this->featured();
+        $this->genres();
+
+        return [
+            'index' => true,
+            'featured' => true,
+            'genres' => true,
+        ];
+    }
+
     private function indexPayload(array $filters): array
     {
         $query = $this->activeTitles();

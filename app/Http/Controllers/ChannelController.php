@@ -39,6 +39,24 @@ class ChannelController extends Controller
         return response()->json($payload);
     }
 
+    /**
+     * Warm the unfiltered live-channel payloads used by the home/live views.
+     * This is invoked internally by the post-deploy cache job.
+     *
+     * @return array<string, mixed>
+     */
+    public function warmCache(): array
+    {
+        $request = Request::create('/api/v1/channels', 'GET');
+        $this->index($request);
+        $this->now($request);
+
+        return [
+            'index' => true,
+            'now' => true,
+        ];
+    }
+
     public function show(Request $request, int $id): JsonResponse
     {
         $channel = Channel::query()->where('is_active', true)->findOrFail($id);
