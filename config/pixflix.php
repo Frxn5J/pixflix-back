@@ -76,8 +76,9 @@ return [
         'proxy_secret' => env('PIXFLIX_STREAM_PROXY_SECRET'),
     ],
     'cache' => [
-        'catalog_ttl' => (int) env('PIXFLIX_CACHE_CATALOG_TTL', 60),
-        'channels_ttl' => (int) env('PIXFLIX_CACHE_CHANNELS_TTL', 30),
+        'catalog_ttl' => (int) env('PIXFLIX_CACHE_CATALOG_TTL', 43200),
+        'channels_ttl' => (int) env('PIXFLIX_CACHE_CHANNELS_TTL', 43200),
+        'warmup_interval_hours' => (int) env('PIXFLIX_CACHE_WARMUP_INTERVAL_HOURS', 12),
     ],
     'iptv' => [
         'playlist_url' => env('PIXFLIX_IPTV_M3U_URL', 'https://iptv-org.github.io/iptv/index.m3u'),

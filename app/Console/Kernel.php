@@ -23,6 +23,18 @@ class Kernel extends ConsoleKernel
             ->everyMinute()
             ->withoutOverlapping()
             ->onOneServer();
+
+        $cacheWarmup = $schedule->command('pixflix:warm-api-cache --force')
+            ->timezone((string) $settings->get('sync.timezone', config('pixflix.sync.timezone', 'UTC')))
+            ->withoutOverlapping()
+            ->onOneServer();
+
+        if ((int) config('pixflix.cache.warmup_interval_hours', 12) === 24) {
+            $cacheWarmup->dailyAt('00:00');
+        } else {
+            $cacheWarmup->twiceDaily(0, 12);
+        }
+
         $schedule->command('pixflix:sync-iptv-resources')
             ->everyThreeHours()
             ->timezone((string) $settings->get('sync.timezone', config('pixflix.sync.timezone', 'UTC')))

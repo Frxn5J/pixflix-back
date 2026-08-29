@@ -111,8 +111,10 @@ aplicación empieza a guardar archivos.
 
 En el primer arranque con `RUN_CACHE_WARMUP=true`, el contenedor web encola un
 job y el worker calienta en segundo plano las respuestas de catálogo, destacados,
-géneros y canales. El lock distribuido evita duplicarlo entre réplicas. Para
-repetirlo manualmente: `php artisan pixflix:warm-api-cache --force`.
+géneros y canales. Después se repite automáticamente cada 12 horas. El lock
+distribuido evita duplicarlo entre réplicas. Para usar 24 horas configura
+`PIXFLIX_CACHE_WARMUP_INTERVAL_HOURS=24`. Para repetirlo manualmente:
+`php artisan pixflix:warm-api-cache --force`.
 
 Health checks:
 
