@@ -123,7 +123,6 @@ services:
       retries: 5
     stop_grace_period: 30s
     deploy:
-      replicas: ${APP_REPLICAS:-2}
       resources:
         limits:
           cpus: ${APP_CPU_LIMIT:-2.0}
@@ -180,7 +179,6 @@ services:
         condition: service_started
     stop_grace_period: 60s
     deploy:
-      replicas: ${QUEUE_REPLICAS:-2}
       resources:
         limits:
           cpus: ${QUEUE_CPU_LIMIT:-1.0}
