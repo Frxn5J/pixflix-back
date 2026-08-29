@@ -3,6 +3,13 @@ set -eu
 
 cd /var/www/html
 
+# Never expose a production container that cannot encrypt cookies, sessions,
+# and tokens. Configure APP_KEY in Coolify's runtime environment.
+if [ "${APP_ENV:-production}" = "production" ] && [ -z "${APP_KEY:-}" ]; then
+    echo "ERROR: APP_KEY must be configured in the production environment." >&2
+    exit 1
+fi
+
 # Migrations are opt-in. This avoids several horizontally scaled web
 # containers racing during a release; run them once as Coolify's pre-deploy
 # command or set RUN_MIGRATIONS=true on a one-off migration job.

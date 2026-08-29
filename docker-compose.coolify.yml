@@ -107,7 +107,7 @@ services:
       SANCTUM_STATEFUL_DOMAINS: ${SANCTUM_STATEFUL_DOMAINS}
       SANCTUM_TOKEN_EXPIRATION: ${SANCTUM_TOKEN_EXPIRATION:-43200}
       PIXFLIX_SYNC_ASYNC: "true"
-      RUN_MIGRATIONS: "false"
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
       RUN_STORAGE_LINK: ${RUN_STORAGE_LINK:-false}
       RUN_CACHE_WARMUP: ${RUN_CACHE_WARMUP:-true}
     depends_on:
@@ -173,6 +173,8 @@ services:
       PIXFLIX_SYNC_ASYNC: "true"
       RUN_CACHE_WARMUP: "false"
     depends_on:
+      app:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       dragonfly:
@@ -225,6 +227,8 @@ services:
       PIXFLIX_SYNC_ASYNC: "true"
       RUN_CACHE_WARMUP: "false"
     depends_on:
+      app:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       dragonfly:
