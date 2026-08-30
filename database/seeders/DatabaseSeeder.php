@@ -16,6 +16,8 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        $adminPassword = $this->adminPassword();
+
         $this->call(CatalogSeeder::class);
         $this->call(ChannelSeeder::class);
 
@@ -31,14 +33,24 @@ class DatabaseSeeder extends Seeder
             ],
         );
 
-        $admin = User::query()->updateOrCreate(
-            ['email' => 'admin@pixflix.test'],
-            [
-                'name' => 'Pixflix Admin',
-                'password' => Hash::make('password'),
-                'role' => 'admin',
-            ],
-        );
+        $adminEmail = config('pixflix.admin.email');
+        $admin = User::query()->where('email', $adminEmail)->first();
+
+        if ($admin === null && $adminEmail !== 'admin@pixflix.test') {
+            $admin = User::query()
+                ->where('email', 'admin@pixflix.test')
+                ->where('role', 'admin')
+                ->first();
+        }
+
+        $admin ??= new User();
+        $admin->forceFill([
+            'name' => 'Pixflix Admin',
+            'email' => $adminEmail,
+            'username' => config('pixflix.admin.username'),
+            'password' => Hash::make($adminPassword),
+            'role' => 'admin',
+        ])->save();
 
         User::query()->updateOrCreate(
             ['email' => 'agent@pixflix.test'],
@@ -82,5 +94,16 @@ class DatabaseSeeder extends Seeder
                 'pin_hash' => null,
             ],
         );
+    }
+
+    private function adminPassword(): string
+    {
+        $password = config('pixflix.admin.password');
+
+        if (! is_string($password) || $password === '') {
+            throw new \RuntimeException('ADMIN_PASSWORD debe estar configurada para ejecutar el seeder.');
+        }
+
+        return $password;
     }
 }

@@ -32,12 +32,12 @@ Route::prefix('v1')->group(function () {
             ->middleware('throttle:20,1')
             ->name('api.v1.auth.login');
         Route::post('/logout', [AuthController::class, 'logout'])
-            ->middleware('auth:sanctum')
+            ->middleware(['auth:sanctum', 'auth.refresh'])
             ->name('api.v1.auth.logout');
     });
 
     Route::post('/trials', [TrialController::class, 'store'])
-        ->middleware(['auth:sanctum', 'role:admin,agent'])
+        ->middleware(['auth:sanctum', 'auth.refresh', 'role:admin,agent'])
         ->name('api.v1.trials.store');
 
     Route::get('/channels/{id}/stream', [ChannelController::class, 'stream'])
@@ -46,7 +46,7 @@ Route::prefix('v1')->group(function () {
         ->whereIn('kind', ['title', 'episode'])
         ->name('api.v1.vod.stream');
 
-    Route::middleware('auth:sanctum')->group(function () {
+    Route::middleware(['auth:sanctum', 'auth.refresh'])->group(function () {
         Route::get('/me', [AuthController::class, 'me'])->name('api.v1.me');
         Route::put('/me/password', [AuthController::class, 'updatePassword'])
             ->name('api.v1.me.password');

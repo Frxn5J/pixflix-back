@@ -17,6 +17,14 @@ class QueueAndCacheTest extends TestCase
 {
     use DatabaseTransactions;
 
+    public function test_redis_read_timeout_exceeds_the_queue_blocking_window(): void
+    {
+        $this->assertGreaterThan(
+            (float) config('queue.connections.redis.block_for'),
+            (float) config('database.redis.default.read_timeout'),
+        );
+    }
+
     public function test_admin_sync_endpoints_are_synchronous_by_default(): void
     {
         Queue::fake();

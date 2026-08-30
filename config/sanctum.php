@@ -43,15 +43,14 @@ return [
     | Expiration Minutes
     |--------------------------------------------------------------------------
     |
-    | This value controls the number of minutes until an issued token will be
-    | considered expired. This will override any values set in the token's
-    | "expires_at" attribute, but first-party sessions are not affected.
+    | The application uses each token's explicit "expires_at" value so that
+    | authenticated activity can renew the token's expiration window.
+    | Keep this global limit null; otherwise it would impose a fixed lifetime
+    | based on the token's creation date.
     |
     */
 
-    'expiration' => env('SANCTUM_TOKEN_EXPIRATION') !== null
-        ? (int) env('SANCTUM_TOKEN_EXPIRATION')
-        : null,
+    'expiration' => null,
 
     /*
     |--------------------------------------------------------------------------

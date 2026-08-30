@@ -7,6 +7,7 @@ use App\Models\Subscription;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Hash;
+use Laravel\Sanctum\PersonalAccessToken;
 use Tests\TestCase;
 
 class AuthTest extends TestCase
@@ -96,6 +97,31 @@ class AuthTest extends TestCase
 
         $this->refreshApplication();
         $this->withToken($token)->getJson('/api/v1/me')->assertUnauthorized();
+    }
+
+    public function test_bearer_token_expiration_is_renewed_on_authenticated_activity(): void
+    {
+        $user = User::factory()->create([
+            'email' => 'sliding@pixflix.test',
+            'password' => Hash::make('password'),
+        ]);
+        Subscription::factory()->create(['user_id' => $user->id]);
+
+        $token = $this->postJson('/api/v1/auth/login', [
+            'login' => 'sliding@pixflix.test',
+            'password' => 'password',
+        ])->json('data.token');
+
+        $accessToken = PersonalAccessToken::findToken($token);
+        $this->assertNotNull($accessToken->expires_at);
+        $accessToken->update(['expires_at' => now()->addMinutes(5)]);
+
+        $this->withToken($token)->getJson('/api/v1/me')->assertOk();
+
+        $this->assertGreaterThan(
+            now()->addDays(29)->timestamp,
+            $accessToken->refresh()->expires_at->timestamp,
+        );
     }
 
     public function test_password_update_hashes_the_new_password_and_revokes_tokens(): void

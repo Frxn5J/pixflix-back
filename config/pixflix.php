@@ -4,6 +4,12 @@ return [
     'service' => env('PIXFLIX_SERVICE_NAME', 'pixflix-api'),
     'api_version' => 'v1',
     'auth_token_name' => env('PIXFLIX_AUTH_TOKEN_NAME', 'pwa'),
+    'auth_token_lifetime_minutes' => max(1, (int) env('SESSION_LIFETIME', 43200)),
+    'admin' => [
+        'email' => env('ADMIN_EMAIL', 'admin@pixflix.test'),
+        'username' => env('ADMIN_USERNAME', 'admin'),
+        'password' => env('ADMIN_PASSWORD'),
+    ],
     'request_id_header' => 'X-Request-Id',
     'pwa' => [
         'force_update' => filter_var(env('PIXFLIX_PWA_FORCE_UPDATE', false), FILTER_VALIDATE_BOOLEAN),

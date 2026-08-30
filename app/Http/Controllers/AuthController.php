@@ -41,7 +41,11 @@ class AuthController extends Controller
             $request->session()->regenerate();
         }
 
-        $token = $user->createToken(config('pixflix.auth_token_name', 'pwa'));
+        $token = $user->createToken(
+            config('pixflix.auth_token_name', 'pwa'),
+            ['*'],
+            now()->addMinutes((int) config('pixflix.auth_token_lifetime_minutes', 43200)),
+        );
 
         return response()->json([
             'data' => [

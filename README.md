@@ -58,9 +58,14 @@ DB_PASSWORD=CAMBIAR_ESTA_CLAVE
 DRAGONFLY_HOST=dragonfly.example.internal
 DRAGONFLY_PORT=6379
 DRAGONFLY_PASSWORD=CAMBIAR_ESTA_CLAVE
+DRAGONFLY_READ_TIMEOUT=60
 CACHE_STORE=redis
 SESSION_DRIVER=redis
+SESSION_LIFETIME=43200
 QUEUE_CONNECTION=redis
+ADMIN_EMAIL=admin@ejemplo.com
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=CAMBIAR_POR_UNA_CLAVE_LARGA
 PIXFLIX_SYNC_ASYNC=true
 PIXFLIX_STREAM_DELIVERY=xaccel
 CORS_ALLOWED_ORIGINS=https://app.ejemplo.com
@@ -96,7 +101,22 @@ CORS_ALLOWED_ORIGINS=https://app.ejemplo.com
 SANCTUM_STATEFUL_DOMAINS=app.ejemplo.com
 POSTGRES_PASSWORD=CLAVE_LARGA_POSTGRES
 DRAGONFLY_PASSWORD=CLAVE_LARGA_DRAGONFLY
+SESSION_LIFETIME=43200
+ADMIN_EMAIL=admin@ejemplo.com
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=CLAVE_LARGA_ADMIN
 ```
+
+`SESSION_LIFETIME` se expresa en minutos. El valor `43200` equivale a 30 días:
+la cookie SPA y los tokens Bearer renuevan ese periodo después de cada request
+autenticado. No configures `SANCTUM_TOKEN_EXPIRATION`, ya que el vencimiento
+deslizante usa el `expires_at` explícito de cada token.
+
+Las credenciales `ADMIN_*` se aplican al usuario administrador cuando se ejecuta
+`php artisan db:seed` o `php artisan migrate --seed`. La contraseña nunca se
+guarda en texto plano. En una instalación nueva, ejecuta
+`php artisan db:seed --force` una vez después de migrar para crear la cuenta
+administrativa.
 
 Para una aplicación creada fuera del compose, usa los nombres internos de los
 recursos de Coolify en `DB_HOST` y `DRAGONFLY_HOST`. Si Coolify entrega una
