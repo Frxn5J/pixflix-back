@@ -99,6 +99,32 @@ class StreamResolver
 
         $languages = $language === null || trim($language) === '' ? null : $language;
         $cacheKey = $key.':'.sha1($languages ?? '*');
+
+        if ($this->stremioIsPrimary()) {
+            $stremioCacheKey = "pixflix:stremio:streams:{$cacheKey}";
+            $cachedStremioStreams = $this->usable(Cache::get($stremioCacheKey), $languages);
+
+            if ($cachedStremioStreams !== []) {
+                return $cachedStremioStreams;
+            }
+
+            try {
+                $addonStreams = $this->usable($stremio(), $languages);
+
+                if ($addonStreams !== []) {
+                    $this->remember($cacheKey, $addonStreams, true);
+
+                    return $addonStreams;
+                }
+            } catch (Throwable $error) {
+                Log::notice('Stremio primary resolution failed', ['key' => $key, 'error' => $error->getMessage()]);
+            }
+
+            return app()->environment('testing') || (bool) config('pixflix.catalog.use_fixtures', false)
+                ? $this->fixtureStreams($fixtureKey)
+                : [];
+        }
+
         $cachedStreams = $this->usable($cached, $languages);
 
         if ($cachedStreams !== []) {
@@ -139,6 +165,14 @@ class StreamResolver
         return app()->environment('testing') || (bool) config('pixflix.catalog.use_fixtures', false)
             ? $this->fixtureStreams($fixtureKey)
             : [];
+    }
+
+    private function stremioIsPrimary(): bool
+    {
+        return (bool) $this->settings->get(
+            'stremio.primary',
+            config('pixflix.stremio.primary', false),
+        );
     }
 
     private function apiStreams(mixed $url): array
@@ -204,10 +238,10 @@ class StreamResolver
         };
     }
 
-    private function remember(string $key, array $streams): void
+    private function remember(string $key, array $streams, bool $stremio = false): void
     {
         Cache::put(
-            "pixflix:streams:{$key}",
+            ($stremio ? 'pixflix:stremio:streams:' : 'pixflix:streams:').$key,
             $streams,
             max(60, (int) $this->settings->get('stremio.cache_ttl_seconds', config('pixflix.stremio.cache_ttl_seconds', 1800))),
         );

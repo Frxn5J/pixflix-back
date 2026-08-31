@@ -24,7 +24,20 @@ php artisan migrate --seed
 php artisan serve --host=127.0.0.1 --port=8001
 ```
 
-La API quedará disponible en `http://127.0.0.1:8001/api/v1`.
+La API quedará disponible en `http://127.0.0.1:8001/api/v1` y el panel web
+administrativo en `http://127.0.0.1:8001/`.
+
+## Panel administrativo web
+
+La raíz del backend (`/`) muestra el login exclusivo para usuarios con rol
+`admin`. Se autentica con sesión web y protección CSRF; agentes y suscriptores
+no pueden entrar. Después de iniciar sesión, `/admin` concentra las opciones
+que antes estaban en el frontend: usuarios, suscripciones, planes, canales,
+listas IPTV/VOD, proxies, addons Stremio, sincronizaciones y cuentas de prueba.
+
+Las credenciales iniciales se crean con `ADMIN_EMAIL`, `ADMIN_USERNAME` y
+`ADMIN_PASSWORD` al ejecutar `php artisan migrate --seed`. Cambia esas variables
+antes de desplegar y no compartas la contraseña.
 
 ## Instalación en servidor
 
@@ -175,6 +188,10 @@ y segmentos de manifiestos HLS.
 Las películas se enriquecen automáticamente con TMDB al sincronizar. Configura
 `PIXFLIX_TMDB_API_KEY` o `PIXFLIX_TMDB_ACCESS_TOKEN` para obtener sinopsis,
 duración, director, reparto, géneros, valoración, póster y enlace de TMDB.
+
+Cuando Stremio se selecciona como fuente principal, `Fuentes de streams`
+importa también sus títulos al catálogo. `Importar catálogo` permite repetir la
+carga manualmente; las temporadas y episodios se completan al abrir una serie.
 
 ## Actualización
 

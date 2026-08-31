@@ -83,6 +83,9 @@ Route::prefix('v1')->group(function () {
             Route::post('/stream-fallback/verify-content', [AdminController::class, 'verifyStreamFallbackContent'])
                 ->middleware('role:admin')
                 ->name('api.v1.admin.stream-fallback.verify-content');
+            Route::post('/stream-fallback/sync-catalog', [AdminController::class, 'syncStreamFallbackCatalog'])
+                ->middleware('role:admin')
+                ->name('api.v1.admin.stream-fallback.sync-catalog');
         });
 
         Route::middleware('subscription.active')->group(function () {

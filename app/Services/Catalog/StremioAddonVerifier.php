@@ -99,12 +99,35 @@ class StremioAddonVerifier
     private function manifestUrl(string $url): string
     {
         $url = trim($url);
+        $parts = parse_url($url);
+        if (! is_array($parts) || ! isset($parts['scheme'], $parts['host'])) {
+            if (preg_match('#/manifest(?:\.json)?$#i', $url)) {
+                return preg_replace('#/manifest$#i', '/manifest.json', $url) ?: $url;
+            }
 
-        if (preg_match('#/manifest(?:\.json)?$#i', $url)) {
-            return preg_replace('#/manifest$#i', '/manifest.json', $url) ?: $url;
+            return rtrim($url, '/').'/manifest.json';
         }
 
-        return rtrim($url, '/').'/manifest.json';
+        $path = (string) ($parts['path'] ?? '');
+        if (preg_match('#/manifest(?:\.json)?$#i', $path)) {
+            $path = preg_replace('#/manifest$#i', '/manifest.json', $path) ?: $path;
+        } else {
+            $path = rtrim($path, '/').'/manifest.json';
+        }
+
+        return $this->composeUrl($parts, $path);
+    }
+
+    /** @param array<string, mixed> $parts */
+    private function composeUrl(array $parts, string $path): string
+    {
+        $authority = (string) $parts['host'];
+        if (isset($parts['port'])) {
+            $authority .= ':'.$parts['port'];
+        }
+
+        return $parts['scheme'].'://'.$authority.$path
+            .(isset($parts['query']) && $parts['query'] !== '' ? '?'.$parts['query'] : '');
     }
 
     private function resourceNames(array $resources): array

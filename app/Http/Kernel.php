@@ -57,6 +57,7 @@ class Kernel extends HttpKernel
         'auth' => \App\Http\Middleware\Authenticate::class,
         'auth.refresh' => \App\Http\Middleware\RefreshSanctumToken::class,
         'role' => \App\Http\Middleware\RequireRole::class,
+        'admin.web' => \App\Http\Middleware\EnsureAdminWeb::class,
         'subscription.active' => \App\Http\Middleware\EnsureActiveSubscription::class,
         'auth.basic' => \Illuminate\Auth\Middleware\AuthenticateWithBasicAuth::class,
         'auth.session' => \Illuminate\Session\Middleware\AuthenticateSession::class,

@@ -64,8 +64,13 @@ return [
     ],
     'stremio' => [
         'enabled' => filter_var(env('PIXFLIX_STREMIO_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'primary' => filter_var(env('PIXFLIX_STREMIO_PRIMARY', false), FILTER_VALIDATE_BOOLEAN),
         'timeout_seconds' => (int) env('PIXFLIX_STREMIO_TIMEOUT_SECONDS', 10),
         'cache_ttl_seconds' => (int) env('PIXFLIX_STREAM_CACHE_TTL_SECONDS', 1800),
+        'catalog_max_pages' => (int) env('PIXFLIX_STREMIO_CATALOG_MAX_PAGES', 10),
+        'catalog_max_items' => (int) env('PIXFLIX_STREMIO_CATALOG_MAX_ITEMS', 500),
+        'catalog_sync_ttl_seconds' => (int) env('PIXFLIX_STREMIO_CATALOG_SYNC_TTL_SECONDS', 900),
+        'catalog_sync_wait_seconds' => (int) env('PIXFLIX_STREMIO_CATALOG_SYNC_WAIT_SECONDS', 120),
         'languages' => array_values(array_filter(array_map('trim', explode(',', env('PIXFLIX_STREMIO_LANGUAGES', ''))))),
         'addons' => [],
     ],

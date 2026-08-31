@@ -130,6 +130,7 @@ class StremioResolver
             $raw['imdbId'] ?? null,
             $raw['imdb'] ?? null,
             $raw['id'] ?? null,
+            $raw['stremio_id'] ?? null,
             $title->external_id,
             $title->slug,
         ];
@@ -342,12 +343,40 @@ class StremioResolver
     private function streamUrl(string $baseUrl, string $type, string $id): string
     {
         $encodedId = str_replace('%3A', ':', rawurlencode($id));
+        $parts = parse_url(trim($baseUrl));
+        $suffix = '/stream/'.$type.'/'.$encodedId.'.json';
 
-        return "{$baseUrl}/stream/{$type}/{$encodedId}.json";
+        if (! is_array($parts) || ! isset($parts['scheme'], $parts['host'])) {
+            return rtrim($baseUrl, '/').$suffix;
+        }
+
+        $path = (string) ($parts['path'] ?? '');
+        $path = preg_replace('#/manifest(?:\.json)?$#i', '', $path) ?? $path;
+
+        return $this->composeUrl($parts, rtrim($path, '/').$suffix);
     }
 
     private function withoutManifest(string $url): string
     {
-        return preg_replace('#/manifest(?:\.json)?$#i', '', trim($url)) ?: trim($url);
+        $parts = parse_url(trim($url));
+        if (! is_array($parts) || ! isset($parts['scheme'], $parts['host'])) {
+            return preg_replace('#/manifest(?:\.json)?$#i', '', trim($url)) ?: trim($url);
+        }
+
+        $path = preg_replace('#/manifest(?:\.json)?$#i', '', (string) ($parts['path'] ?? '')) ?? (string) ($parts['path'] ?? '');
+
+        return $this->composeUrl($parts, rtrim($path, '/'));
+    }
+
+    /** @param array<string, mixed> $parts */
+    private function composeUrl(array $parts, string $path): string
+    {
+        $authority = (string) $parts['host'];
+        if (isset($parts['port'])) {
+            $authority .= ':'.$parts['port'];
+        }
+
+        return $parts['scheme'].'://'.$authority.$path
+            .(isset($parts['query']) && $parts['query'] !== '' ? '?'.$parts['query'] : '');
     }
 }

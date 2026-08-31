@@ -71,6 +71,37 @@ class StremioFallbackTest extends TestCase
         Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), 'addon-two.test'));
     }
 
+    public function test_primary_stremio_resolution_skips_legacy_cache_and_api(): void
+    {
+        $title = Title::factory()->create([
+            'raw_extract' => [
+                'url' => 'https://catalog.test/movie/legacy-source',
+                'streams' => [[
+                    'hls' => 'https://cdn.test/legacy.m3u8',
+                    'language' => 'Latino',
+                ]],
+            ],
+        ]);
+        $this->configureAddons();
+        app(SyncSettings::class)->put('stremio.primary', true);
+        Http::fake(function (Request $request) {
+            if (str_contains($request->url(), 'addon-one.test')) {
+                return Http::response(['streams' => [[
+                    'url' => 'https://cdn.test/stremio-primary.m3u8',
+                    'language' => 'Latino',
+                ]]], 200);
+            }
+
+            return Http::response(['streams' => []], 200);
+        });
+
+        $streams = app(StreamResolver::class)->titleStreams($title);
+
+        $this->assertSame('https://cdn.test/stremio-primary.m3u8', $streams[0]['hls']);
+        Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), 'api.test/extract'));
+        Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), 'catalog.test'));
+    }
+
     public function test_addons_are_tried_in_priority_order_and_dead_torrents_are_filtered(): void
     {
         $title = Title::factory()->create([
@@ -151,11 +182,42 @@ class StremioFallbackTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('data.enabled', true)
+            ->assertJsonPath('data.primary', false)
             ->assertJsonPath('data.addons.0.id', 'first')
             ->assertJsonPath('data.addons.1.id', 'second')
             ->assertJsonPath('data.addons.0.base_url', 'https://addon-one.test');
 
         $this->assertDatabaseHas('settings', ['key' => 'stremio.addons']);
+    }
+
+    public function test_admin_can_enable_stremio_as_the_primary_stream_source(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $token = $this->postJson('/api/v1/auth/login', [
+            'login' => $admin->email,
+            'password' => 'password',
+        ])->json('data.token');
+
+        $this->withToken($token)->putJson('/api/v1/admin/stream-fallback', [
+            'enabled' => true,
+            'primary' => true,
+            'timeout_seconds' => 8,
+            'cache_ttl_seconds' => 3600,
+            'languages' => ['Latino'],
+            'addons' => [[
+                'id' => 'primary-addon',
+                'name' => 'Addon principal',
+                'base_url' => 'https://addon-primary.test/manifest.json',
+                'enabled' => true,
+                'priority' => 1,
+                'timeout_seconds' => 8,
+            ]],
+        ])->assertOk()
+            ->assertJsonPath('data.primary', true)
+            ->assertJsonPath('data.enabled', true)
+            ->assertJsonPath('data.addons.0.base_url', 'https://addon-primary.test/manifest.json');
+
+        $this->assertDatabaseHas('settings', ['key' => 'stremio.primary', 'value' => 'true']);
     }
 
     public function test_admin_can_verify_a_manifest_without_persisting_the_result(): void

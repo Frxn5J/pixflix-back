@@ -7,14 +7,18 @@ use App\Http\Resources\TitleDetailResource;
 use App\Http\Resources\TitleResource;
 use App\Models\CatalogSnapshot;
 use App\Models\Title;
+use App\Services\Catalog\StremioCatalogSyncService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
 
 class CatalogController extends Controller
 {
+    public function __construct(private readonly StremioCatalogSyncService $stremioCatalog) {}
+
     public function index(CatalogIndexRequest $request): JsonResponse
     {
+        $this->stremioCatalog->ensureAvailable();
         $filters = $request->validated();
         $key = 'index:'.sha1((string) json_encode([$filters, $request->query('page', 1)]));
         $cached = $this->rememberCatalog($key, fn (): array => $this->indexPayload($filters));
@@ -35,6 +39,7 @@ class CatalogController extends Controller
      */
     public function warmCache(): array
     {
+        $this->stremioCatalog->ensureAvailable();
         $this->rememberCatalog(
             'index:'.sha1((string) json_encode([[], 1])),
             fn (): array => $this->indexPayload([]),
@@ -111,6 +116,7 @@ class CatalogController extends Controller
 
     public function featured(): JsonResponse
     {
+        $this->stremioCatalog->ensureAvailable();
         $data = $this->rememberCatalog('featured', function (): array {
             return $this->activeTitles()
                 ->where('category', 'featured')
@@ -129,6 +135,7 @@ class CatalogController extends Controller
 
     public function genres(): JsonResponse
     {
+        $this->stremioCatalog->ensureAvailable();
         $genres = $this->rememberCatalog('genres', function (): array {
             return $this->activeTitles()
                 ->pluck('genres')
@@ -144,6 +151,16 @@ class CatalogController extends Controller
 
     public function show(string $slug): JsonResponse
     {
+        $this->stremioCatalog->ensureAvailable();
+        $stremioTitle = Title::query()
+            ->where('source', 'stremio')
+            ->where('slug', $slug)
+            ->where('is_active', true)
+            ->first();
+        if ($stremioTitle !== null) {
+            $this->stremioCatalog->hydrateTitle($stremioTitle);
+        }
+
         $payload = $this->rememberCatalog('title:'.$slug, function () use ($slug): array {
             $title = $this->activeTitles()
                 ->with([
@@ -184,6 +201,11 @@ class CatalogController extends Controller
                 ->orWhere(function (Builder $vodQuery): void {
                     $vodQuery
                         ->where('source', 'iptv_vod')
+                        ->where('is_active', true);
+                })
+                ->orWhere(function (Builder $stremioQuery): void {
+                    $stremioQuery
+                        ->where('source', 'stremio')
                         ->where('is_active', true);
                 });
         });

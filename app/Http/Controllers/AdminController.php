@@ -10,6 +10,7 @@ use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\User;
 use App\Services\Catalog\StremioAddonVerifier;
+use App\Services\Catalog\StremioCatalogSyncService;
 use App\Services\Catalog\StremioContentVerifier;
 use App\Services\Iptv\IptvProxyPool;
 use App\Services\Iptv\IptvResourceSyncService;
@@ -19,6 +20,7 @@ use App\Services\SyncSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class AdminController extends Controller
 {
@@ -386,10 +388,11 @@ class AdminController extends Controller
         return response()->json(['data' => $this->streamFallbackData()]);
     }
 
-    public function updateStreamFallback(Request $request): JsonResponse
+    public function updateStreamFallback(Request $request, StremioCatalogSyncService $sync): JsonResponse
     {
         $validated = $request->validate([
             'enabled' => ['required', 'boolean'],
+            'primary' => ['sometimes', 'boolean'],
             'timeout_seconds' => ['required', 'integer', 'between:1,60'],
             'cache_ttl_seconds' => ['required', 'integer', 'between:60,604800'],
             'languages' => ['present', 'array', 'max:20'],
@@ -416,13 +419,37 @@ class AdminController extends Controller
             ->values()
             ->all();
 
+        $primary = (bool) ($validated['primary'] ?? $this->settings->get(
+            'stremio.primary',
+            config('pixflix.stremio.primary', false),
+        ));
+
+        if ($primary && ! $validated['enabled']) {
+            throw ValidationException::withMessages([
+                'enabled' => 'Activa Stremio antes de seleccionarlo como fuente principal.',
+            ]);
+        }
+
+        if ($primary && ! collect($addons)->contains(fn (array $addon): bool => $addon['enabled'] === true)) {
+            throw ValidationException::withMessages([
+                'addons' => 'Agrega y activa al menos un addon Stremio para usarlo como fuente principal.',
+            ]);
+        }
+
         $this->settings->put('stremio.enabled', (bool) $validated['enabled']);
+        $this->settings->put('stremio.primary', $primary);
         $this->settings->put('stremio.timeout_seconds', (int) $validated['timeout_seconds']);
         $this->settings->put('stremio.cache_ttl_seconds', (int) $validated['cache_ttl_seconds']);
         $this->settings->put('stremio.languages', array_values(array_filter(array_map('trim', $validated['languages']))));
         $this->settings->put('stremio.addons', $addons);
+        $sync->invalidate();
 
         return response()->json(['data' => $this->streamFallbackData()]);
+    }
+
+    public function syncStreamFallbackCatalog(StremioCatalogSyncService $sync): JsonResponse
+    {
+        return response()->json(['data' => $sync->sync(true)]);
     }
 
     public function verifyStreamFallbackAddon(Request $request, StremioAddonVerifier $verifier): JsonResponse
@@ -594,6 +621,7 @@ class AdminController extends Controller
 
         return [
             'enabled' => (bool) $this->settings->get('stremio.enabled', config('pixflix.stremio.enabled', false)),
+            'primary' => (bool) $this->settings->get('stremio.primary', config('pixflix.stremio.primary', false)),
             'timeout_seconds' => (int) $this->settings->get('stremio.timeout_seconds', config('pixflix.stremio.timeout_seconds', 10)),
             'cache_ttl_seconds' => (int) $this->settings->get('stremio.cache_ttl_seconds', config('pixflix.stremio.cache_ttl_seconds', 1800)),
             'languages' => $this->settings->get('stremio.languages', config('pixflix.stremio.languages', [])),

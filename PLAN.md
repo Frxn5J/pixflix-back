@@ -60,10 +60,12 @@ Laravel 10 está fuera de soporte activo; la actualización a Laravel 11/12 qued
 ## Estado del fallback de streams
 
 - Implementada resolución ordenada cache → API principal → addons Stremio por prioridad.
+- Implementado el modo de fuente primaria Stremio: omite streams legacy/cacheados y la extracción de la API anterior, y conserva únicamente una cache separada de resoluciones obtenidas desde los addons activos.
 - Implementada configuración administrativa persistida en `settings`, con múltiples addons, timeout, prioridad, activación y filtro de idioma.
 - Implementada normalización al contrato `Stream`, descarte de torrents sin seeders/leechers y pruebas secuenciales sin borrar la base de datos.
 - Implementada verificación rápida de manifest Stremio al agregar addons, sin cachear ni persistir el diagnóstico.
 - Implementada verificación profunda manual por addon: paginación de catálogos, conteo por tipo/idioma y revisión temporal de streams y pares torrent, con límites de páginas/elementos y sin cache ni persistencia.
+- Implementada importación persistente del catálogo Stremio principal y carga bajo demanda de temporadas y episodios.
 
 ## Estado de C3
 
