@@ -10,7 +10,6 @@ use App\Models\Subscription;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class ChannelTest extends TestCase
@@ -44,22 +43,16 @@ class ChannelTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.current.title', 'Programa actual')
             ->assertJsonPath('data.stream.quality', 'auto')
+            ->assertJsonPath('data.stream.hls', 'https://cdn.test/demo.m3u8')
+            ->assertJsonPath('data.stream.proxy.required', true)
             ->assertJsonPath('data.stream.mp4', null);
-
-        Http::fake([
-            'https://cdn.test/*' => Http::response("#EXTM3U\n#EXTINF:4,\nsegment.ts\n", 200, [
-                'Content-Type' => 'application/vnd.apple.mpegurl',
-            ]),
-        ]);
-        $proxyUrl = $this->withToken($token)->getJson("/api/v1/channels/{$channel->id}")->json('data.stream.hls');
-        $this->get($proxyUrl)->assertOk()->assertHeader('Access-Control-Allow-Origin', '*');
 
         $this->withToken($token)->getJson("/api/v1/channels/{$channel->id}/epg")
             ->assertOk()
             ->assertJsonPath('data.0.title', 'Programa actual');
     }
 
-    public function test_iptv_proxy_pool_rotates_and_cascades(): void
+    public function test_channel_delivers_the_configured_proxy_pool_to_the_frontend(): void
     {
         [$token] = $this->subscriber();
         $channel = Channel::query()->create([
@@ -87,30 +80,15 @@ class ChannelTest extends TestCase
                 ],
             ]),
         ]);
-        Cache::forget('pixflix:iptv-proxy-cursor');
-        Http::fake([
-            'https://proxy-one.test/*' => Http::response("#EXTM3U\n#EXTINF:4,\nsegment.ts\n", 200, [
-                'Content-Type' => 'application/vnd.apple.mpegurl',
-            ]),
-            'https://proxy-two.test/*' => Http::response("#EXTM3U\n#EXTINF:4,\nsegment.ts\n", 503),
-        ]);
-
-        $streamUrl = $this->withToken($token)
+        Cache::forget('pixflix:setting:iptv.proxies');
+        $response = $this->withToken($token)
             ->getJson("/api/v1/channels/{$channel->id}")
-            ->json('data.stream.hls');
+            ->assertOk();
 
-        $this->get($streamUrl)->assertOk();
-        $this->get($streamUrl)->assertOk();
-
-        $requests = Http::recorded();
-        $this->assertCount(3, $requests);
-        $this->assertStringStartsWith('https://proxy-one.test/', $requests[0][0]->url());
-        $this->assertStringStartsWith('https://proxy-two.test/', $requests[1][0]->url());
-        $this->assertStringStartsWith('https://proxy-one.test/', $requests[2][0]->url());
-        $this->assertStringContainsString(
-            'url=https%3A%2F%2Fcdn.test%2Fproxy.m3u8',
-            $requests[0][0]->url(),
-        );
+        $response->assertJsonPath('data.stream.hls', 'https://cdn.test/proxy.m3u8');
+        $response->assertJsonPath('data.stream.proxy.required', true);
+        $response->assertJsonPath('data.stream.proxy.proxies.0.id', 'proxy-one');
+        $response->assertJsonPath('data.stream.proxy.proxies.1.id', 'proxy-two');
     }
 
     public function test_channel_can_bypass_the_proxy_when_its_playlist_disables_it(): void
@@ -139,12 +117,14 @@ class ChannelTest extends TestCase
         $streamUrl = $this->withToken($token)
             ->getJson("/api/v1/channels/{$channel->id}")
             ->assertOk()
+            ->assertJsonPath('data.stream.hls', 'https://cdn.test/direct.m3u8')
+            ->assertJsonPath('data.stream.proxy.required', false)
             ->json('data.stream.hls');
 
         $this->assertSame('https://cdn.test/direct.m3u8', $streamUrl);
     }
 
-    public function test_proxy_urls_inside_manifests_are_unwrapped_before_the_next_fetch(): void
+    public function test_channel_metadata_does_not_fetch_or_rewrite_the_manifest(): void
     {
         [$token] = $this->subscriber();
         $channel = Channel::query()->create([
@@ -164,43 +144,12 @@ class ChannelTest extends TestCase
             ]]),
         ]);
         Cache::forget('pixflix:setting:iptv.proxies');
-        Cache::forget('pixflix:iptv-proxy-cursor');
 
-        Http::fake(function ($request) {
-            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
-            $target = $query['url'] ?? null;
-
-            if ($target === 'https://cdn.test/master.m3u8') {
-                return Http::response(
-                    "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=800000\n".
-                    'https://proxy-one.test/?token=secret&url='.
-                    rawurlencode('https://cdn.test/variant.m3u8')."\n",
-                    200,
-                    ['Content-Type' => 'application/vnd.apple.mpegurl'],
-                );
-            }
-
-            return Http::response("#EXTM3U\n#EXTINF:4,\nsegment.ts\n", 200, [
-                'Content-Type' => 'application/vnd.apple.mpegurl',
-            ]);
-        });
-
-        $masterUrl = $this->withToken($token)
+        $response = $this->withToken($token)
             ->getJson("/api/v1/channels/{$channel->id}")
-            ->json('data.stream.hls');
-        $masterResponse = $this->get($masterUrl)->assertOk();
-        $variantUrl = collect(preg_split('/\r?\n/', $masterResponse->getContent()))
-            ->first(fn (string $line): bool => $line !== '' && ! str_starts_with($line, '#'));
+            ->assertOk();
 
-        $this->assertIsString($variantUrl);
-        parse_str((string) parse_url($variantUrl, PHP_URL_QUERY), $variantQuery);
-        $this->assertSame('https://cdn.test/variant.m3u8', $variantQuery['target'] ?? null);
-        $this->assertStringNotContainsString('proxy-one.test', urldecode($variantUrl));
-
-        $this->get($variantUrl)->assertOk();
-        $requests = Http::recorded();
-        parse_str((string) parse_url($requests[1][0]->url(), PHP_URL_QUERY), $secondQuery);
-        $this->assertSame('https://cdn.test/variant.m3u8', $secondQuery['url'] ?? null);
+        $response->assertJsonPath('data.stream.hls', 'https://cdn.test/master.m3u8');
     }
 
     private function subscriber(): array

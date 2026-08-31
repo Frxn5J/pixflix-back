@@ -77,18 +77,6 @@ return [
         'languages' => array_values(array_filter(array_map('trim', explode(',', env('PIXFLIX_STREMIO_LANGUAGES', ''))))),
         'addons' => [],
     ],
-    'streaming' => [
-        // 'php' streams video through PHP-FPM workers; 'xaccel' only signs and
-        // lets nginx fetch and stream the upstream (see deploy/nginx example).
-        'delivery' => env('PIXFLIX_STREAM_DELIVERY', 'php'),
-        'accel_location' => env('PIXFLIX_STREAM_ACCEL_LOCATION', '/internal/upstream'),
-        // External stream proxy (Cloudflare Worker, see deploy/cloudflare/):
-        // when set, RAW media bytes (HLS segments, MP4, live TS) are served
-        // by the Worker instead of this server. Manifests still pass through
-        // the backend so they can be rewritten and re-signed.
-        'proxy_base_url' => env('PIXFLIX_STREAM_PROXY_BASE_URL'),
-        'proxy_secret' => env('PIXFLIX_STREAM_PROXY_SECRET'),
-    ],
     'cache' => [
         'catalog_ttl' => (int) env('PIXFLIX_CACHE_CATALOG_TTL', 43200),
         'channels_ttl' => (int) env('PIXFLIX_CACHE_CHANNELS_TTL', 43200),

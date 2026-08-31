@@ -6,7 +6,6 @@ use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\ChannelController;
 use App\Http\Controllers\FavoriteController;
 use App\Http\Controllers\HealthController;
-use App\Http\Controllers\IptvVodStreamController;
 use App\Http\Controllers\PlaybackController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\TrialController;
@@ -42,12 +41,6 @@ Route::prefix('v1')->group(function () {
     Route::post('/trials', [TrialController::class, 'store'])
         ->middleware(['auth:sanctum', 'auth.refresh', 'role:admin,agent'])
         ->name('api.v1.trials.store');
-
-    Route::get('/channels/{id}/stream', [ChannelController::class, 'stream'])
-        ->name('api.v1.channels.stream');
-    Route::get('/vod/{kind}/{id}/stream', IptvVodStreamController::class)
-        ->whereIn('kind', ['title', 'episode'])
-        ->name('api.v1.vod.stream');
 
     Route::middleware(['auth:sanctum', 'auth.refresh'])->group(function () {
         Route::get('/me', [AuthController::class, 'me'])->name('api.v1.me');

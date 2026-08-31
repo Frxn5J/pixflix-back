@@ -35,7 +35,7 @@ class PlaybackController extends Controller
 
         $this->logPlayback($request, 'play', $title, null);
 
-        $streams = $this->vod->titleStreams($request, $title)
+        $streams = $this->vod->titleStreams($title)
             ?? $this->streams->titleStreams($title, $request->string('language')->toString() ?: null);
 
         return response()->json(['data' => $streams]);
@@ -52,7 +52,7 @@ class PlaybackController extends Controller
         $title = $episode->season?->title()->first();
         $this->logPlayback($request, 'play', $title, $episode);
 
-        $streams = $this->vod->episodeStreams($request, $episode)
+        $streams = $this->vod->episodeStreams($episode)
             ?? $this->streams->episodeStreams($episode, $request->string('language')->toString() ?: null);
 
         return response()->json(['data' => $streams]);
@@ -68,8 +68,8 @@ class PlaybackController extends Controller
             ? Episode::query()->with('season.title')->find($payload['episode_id'])
             : null;
         $streams = $episode !== null
-            ? $this->vod->episodeStreams($request, $episode)
-            : ($title !== null ? $this->vod->titleStreams($request, $title) : null);
+            ? $this->vod->episodeStreams($episode)
+            : ($title !== null ? $this->vod->titleStreams($title) : null);
         if ($streams === null) {
             $streams = $this->streams->resolve($payload);
         }

@@ -136,6 +136,7 @@ class AdminWebController extends Controller
             'url' => ['required', 'url:http,https', 'max:2048'],
             'language' => ['nullable', 'string', 'max:80'],
             'content_type' => ['required', 'in:auto,movie'],
+            'use_proxy' => ['sometimes', 'boolean'],
             'priority' => ['required', 'integer', 'between:1,10000'],
         ]);
         $playlists = $this->data($this->admin->iptvVodPlaylists())['playlists'] ?? [];
@@ -145,6 +146,7 @@ class AdminWebController extends Controller
             'url' => $validated['url'],
             'language' => $validated['language'] ?? null,
             'content_type' => $validated['content_type'],
+            'use_proxy' => (bool) ($validated['use_proxy'] ?? true),
             'enabled' => true,
             'priority' => (int) $validated['priority'],
         ];

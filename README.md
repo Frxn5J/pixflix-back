@@ -80,7 +80,6 @@ ADMIN_EMAIL=admin@ejemplo.com
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=CAMBIAR_POR_UNA_CLAVE_LARGA
 PIXFLIX_SYNC_ASYNC=true
-PIXFLIX_STREAM_DELIVERY=xaccel
 CORS_ALLOWED_ORIGINS=https://app.ejemplo.com
 SANCTUM_STATEFUL_DOMAINS=app.ejemplo.com
 ```
@@ -186,8 +185,11 @@ usuario en la interfaz.
 El panel administrativo permite añadir listas M3U separadas para canales en
 vivo y para VOD. En las listas VOD, el modo automático agrupa nombres con
 `S01E02` o `1x02` como series; las demás entradas se importan como películas.
-La reproducción VOD reutiliza el pool de proxies IPTV, incluso para variantes
-y segmentos de manifiestos HLS.
+Cada lista tiene la opción `Requiere proxy`. La API entrega al frontend la URL
+de origen, esa decisión y el pool de proxies IPTV habilitados. El navegador
+aplica el proxy al manifiesto, variantes, claves y segmentos sólo cuando la
+lista lo requiere; el backend no descarga ni retransmite los bytes de
+reproducción IPTV/VOD.
 
 Las películas se enriquecen automáticamente con TMDB al sincronizar. Configura
 `PIXFLIX_TMDB_API_KEY` o `PIXFLIX_TMDB_ACCESS_TOKEN` para obtener sinopsis,

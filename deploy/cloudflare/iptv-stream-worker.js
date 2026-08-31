@@ -4,21 +4,27 @@
  *
  * Streams RAW media bytes (HLS segments, MP4, live MPEG-TS) so they never
  * consume the origin server's bandwidth (e.g. an Oracle free-tier VM).
- * Playlists (.m3u8) are NOT handled here: the Laravel backend rewrites and
- * re-signs them; every media URL inside a rewritten manifest already points
- * to this Worker with a valid signature.
+ * The frontend sends every playlist, variant and media URL here with the
+ * `url` query parameter when its M3U list requires a proxy. The Worker adds
+ * CORS headers and fetches the bytes directly, so Laravel never carries the
+ * IPTV/VOD media. The old signed `target` contract remains accepted for
+ * already deployed clients.
  *
- * Contract with the backend (App\Services\Streaming\StreamSigner):
+ * Frontend contract:
+ *   URL params:  url, token[, ua, referer]
+ *   `token` must match PIXFLIX_IPTV_PROXY_TOKEN when that secret is set.
+ *
+ * Legacy contract:
  *   URL params:  target, expires, signature[, ua, referer]
- *   Signature:   HMAC-SHA256 hex of "stream|{expires}|{target}"
- *                with secret PIXFLIX_STREAM_SECRET (wrangler secret).
+ *   Signature:   HMAC-SHA256 hex of "stream|{expires}|{target}" with
+ *                PIXFLIX_STREAM_SECRET.
  *
  * Deploy:
  *   1. npx wrangler deploy            (from this folder, after wrangler.toml)
- *   2. npx wrangler secret put PIXFLIX_STREAM_SECRET
- *   3. In the Laravel .env set:
- *        PIXFLIX_STREAM_PROXY_BASE_URL=https://pixflix-stream.<account>.workers.dev
- *        PIXFLIX_STREAM_PROXY_SECRET=<same secret as above>
+ *   2. npx wrangler secret put PIXFLIX_IPTV_PROXY_TOKEN
+ *   3. In the admin panel add the Worker URL as an IPTV proxy, preserving
+ *      the token in the URL, for example:
+ *        https://pixflix-stream.<account>.workers.dev/?token=<same secret>
  *
  * Free plan: 100k requests/day (~10-15 concurrent HLS viewers).
  * Workers Paid ($5/mo): 10M requests/month (~30-40 concurrent viewers).
@@ -55,26 +61,46 @@ export default {
       return json({ error: { code: 'method_not_allowed' } }, 405);
     }
 
-    if (!env || !env.PIXFLIX_STREAM_SECRET) {
+    if (!env || (!env.PIXFLIX_IPTV_PROXY_TOKEN && !env.PIXFLIX_STREAM_SECRET)) {
       return json({ error: { code: 'worker_misconfigured' } }, 500);
     }
 
     const url = new URL(request.url);
-    const target = url.searchParams.get('target') || '';
-    const expires = Number(url.searchParams.get('expires') || 0);
-    const signature = url.searchParams.get('signature') || '';
-    const now = Math.floor(Date.now() / 1000);
+    const directTarget = url.searchParams.get('url') || '';
+    let target = directTarget;
+
+    if (directTarget) {
+      if (
+        !env.PIXFLIX_IPTV_PROXY_TOKEN ||
+        !timingSafeEqual(
+          url.searchParams.get('token') || '',
+          env.PIXFLIX_IPTV_PROXY_TOKEN,
+        )
+      ) {
+        return json({ error: { code: 'invalid_proxy_token' } }, 403);
+      }
+    } else {
+      target = url.searchParams.get('target') || '';
+      const expires = Number(url.searchParams.get('expires') || 0);
+      const signature = url.searchParams.get('signature') || '';
+      const now = Math.floor(Date.now() / 1000);
+
+      if (
+        !env.PIXFLIX_STREAM_SECRET ||
+        !expires ||
+        expires <= now ||
+        expires > now + MAX_EXPIRY_WINDOW_SECONDS
+      ) {
+        return json({ error: { code: 'invalid_stream_url' } }, 403);
+      }
+
+      const expected = await hmac(`stream|${expires}|${target}`, env.PIXFLIX_STREAM_SECRET);
+      if (!timingSafeEqual(expected, signature)) {
+        return json({ error: { code: 'invalid_stream_url' } }, 403);
+      }
+    }
 
     if (!isHttpUrl(target)) {
-      return json({ error: { code: 'invalid_stream_url' } }, 403);
-    }
-
-    if (!expires || expires <= now || expires > now + MAX_EXPIRY_WINDOW_SECONDS) {
-      return json({ error: { code: 'invalid_stream_url' } }, 403);
-    }
-
-    const expected = await hmac(`stream|${expires}|${target}`, env.PIXFLIX_STREAM_SECRET);
-    if (!timingSafeEqual(expected, signature)) {
       return json({ error: { code: 'invalid_stream_url' } }, 403);
     }
 

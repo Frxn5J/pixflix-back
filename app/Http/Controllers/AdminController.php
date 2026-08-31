@@ -310,6 +310,7 @@ class AdminController extends Controller
             'playlists.*.url' => ['required', 'url:http,https', 'max:2048'],
             'playlists.*.language' => ['nullable', 'string', 'max:80'],
             'playlists.*.content_type' => ['required', Rule::in(['auto', 'movie'])],
+            'playlists.*.use_proxy' => ['sometimes', 'boolean'],
             'playlists.*.enabled' => ['required', 'boolean'],
             'playlists.*.priority' => ['required', 'integer', 'between:1,10000'],
         ]);
@@ -321,6 +322,7 @@ class AdminController extends Controller
                 'url' => trim($playlist['url']),
                 'language' => $this->nullableLower($playlist['language'] ?? null),
                 'content_type' => (string) $playlist['content_type'],
+                'use_proxy' => (bool) ($playlist['use_proxy'] ?? true),
                 'enabled' => (bool) $playlist['enabled'],
                 'priority' => (int) $playlist['priority'],
             ])

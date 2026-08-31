@@ -10,8 +10,6 @@ use App\Models\Title;
 use App\Models\User;
 use App\Services\SyncSettings;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
-use Illuminate\Http\Client\Request as ClientRequest;
-use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class PlaybackTest extends TestCase
@@ -122,7 +120,7 @@ class PlaybackTest extends TestCase
         $this->putJson('/api/v1/progress', ['title_id' => 1, 'position_sec' => 0, 'duration_sec' => 100])->assertUnauthorized();
     }
 
-    public function test_iptv_vod_hls_and_nested_resources_use_the_configured_proxy(): void
+    public function test_iptv_vod_hls_delivers_origin_and_proxy_metadata_to_the_frontend(): void
     {
         [, $token, $profile] = $this->subscriberWithProfile();
         $movie = Title::factory()->create([
@@ -131,6 +129,7 @@ class PlaybackTest extends TestCase
             'source' => 'iptv_vod',
             'is_active' => true,
             'stream_url' => 'https://cdn.example/movies/master.m3u8',
+            'source_playlist_id' => 'vod-main',
             'languages' => ['Latino'],
         ]);
         app(SyncSettings::class)->put('iptv.proxies', [[
@@ -140,60 +139,29 @@ class PlaybackTest extends TestCase
             'enabled' => true,
             'priority' => 1,
         ]]);
+        app(SyncSettings::class)->put('iptv.vod_playlists', [[
+            'id' => 'vod-main',
+            'name' => 'VOD principal',
+            'url' => 'https://streams.example/vod.m3u',
+            'content_type' => 'auto',
+            'use_proxy' => true,
+            'enabled' => true,
+            'priority' => 1,
+        ]]);
 
-        Http::fake(function (ClientRequest $request) {
-            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
-            $target = $query['url'] ?? '';
-
-            return match ($target) {
-                'https://cdn.example/movies/master.m3u8' => Http::response(
-                    "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=800000\nvideo/720p.m3u8\n",
-                    200,
-                    ['Content-Type' => 'application/vnd.apple.mpegurl'],
-                ),
-                'https://cdn.example/movies/video/720p.m3u8' => Http::response(
-                    "#EXTM3U\n#EXTINF:6,\nsegment-001.ts\n",
-                    200,
-                    ['Content-Type' => 'application/vnd.apple.mpegurl'],
-                ),
-                default => Http::response('not found', 404),
-            };
-        });
-
-        $streamUrl = $this->withToken($token)
+        $response = $this->withToken($token)
             ->withHeader('X-Profile-Id', (string) $profile->id)
             ->getJson('/api/v1/titles/pelicula-vod/streams')
             ->assertOk()
             ->assertJsonPath('data.0.mp4', null)
-            ->json('data.0.hls');
+            ->assertJsonPath('data.0.hls', 'https://cdn.example/movies/master.m3u8')
+            ->assertJsonPath('data.0.proxy.required', true)
+            ->assertJsonPath('data.0.proxy.proxies.0.base_url', 'https://proxy.example/fetch?token=secret');
 
-        $this->assertStringContainsString("/api/v1/vod/title/{$movie->id}/stream", $streamUrl);
-        $this->assertStringNotContainsString('proxy.example', $streamUrl);
-        $manifestPath = parse_url($streamUrl, PHP_URL_PATH).'?'.parse_url($streamUrl, PHP_URL_QUERY);
-        $manifest = $this->withHeader('Origin', 'http://localhost:3000')->get($manifestPath)
-            ->assertOk()
-            ->assertHeader('Access-Control-Allow-Origin', 'http://localhost:3000');
-
-        $variantUrl = collect(preg_split('/\r?\n/', $manifest->getContent()))
-            ->first(fn (string $line): bool => str_starts_with($line, 'http'));
-        $this->assertIsString($variantUrl);
-        parse_str((string) parse_url($variantUrl, PHP_URL_QUERY), $variantQuery);
-        $this->assertSame('https://cdn.example/movies/video/720p.m3u8', $variantQuery['target']);
-
-        $variantPath = parse_url($variantUrl, PHP_URL_PATH).'?'.parse_url($variantUrl, PHP_URL_QUERY);
-        $this->get($variantPath)->assertOk();
-
-        Http::assertSentCount(2);
-        Http::assertSent(function (ClientRequest $request): bool {
-            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
-
-            return str_starts_with($request->url(), 'https://proxy.example/fetch?')
-                && ($query['token'] ?? null) === 'secret'
-                && ($query['url'] ?? null) === 'https://cdn.example/movies/video/720p.m3u8';
-        });
+        $this->assertSame('https://cdn.example/movies/master.m3u8', $response->json('data.0.hls'));
     }
 
-    public function test_iptv_vod_direct_video_uses_the_mp4_stream_field(): void
+    public function test_iptv_vod_direct_video_can_bypass_the_proxy(): void
     {
         [, $token, $profile] = $this->subscriberWithProfile();
         $movie = Title::factory()->create([
@@ -202,18 +170,27 @@ class PlaybackTest extends TestCase
             'source' => 'iptv_vod',
             'is_active' => true,
             'stream_url' => 'https://cdn.example/movies/pelicula.mp4?token=source',
+            'source_playlist_id' => 'vod-direct',
         ]);
+        app(SyncSettings::class)->put('iptv.vod_playlists', [[
+            'id' => 'vod-direct',
+            'name' => 'VOD directo',
+            'url' => 'https://streams.example/vod-direct.m3u',
+            'content_type' => 'movie',
+            'use_proxy' => false,
+            'enabled' => true,
+            'priority' => 1,
+        ]]);
 
         $response = $this->withToken($token)
             ->withHeader('X-Profile-Id', (string) $profile->id)
             ->getJson('/api/v1/titles/pelicula-vod-mp4/streams')
             ->assertOk()
-            ->assertJsonPath('data.0.hls', null);
+            ->assertJsonPath('data.0.hls', null)
+            ->assertJsonPath('data.0.proxy.required', false)
+            ->assertJsonPath('data.0.mp4', 'https://cdn.example/movies/pelicula.mp4?token=source');
 
-        $this->assertStringContainsString(
-            "/api/v1/vod/title/{$movie->id}/stream",
-            $response->json('data.0.mp4'),
-        );
+        $this->assertSame('https://cdn.example/movies/pelicula.mp4?token=source', $response->json('data.0.mp4'));
     }
 
     private function subscriberWithProfile(): array

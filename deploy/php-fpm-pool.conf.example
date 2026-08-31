@@ -16,8 +16,8 @@ listen.group = www-data
 ; static + a fixed pool behaves predictably under burst load.
 pm = static
 ; ~35 MB/worker -> 1.3 GB / 35 MB = ~36. Keep headroom: 30.
-; With PIXFLIX_STREAM_DELIVERY=xaccel streams do NOT hold workers, so 30
-; workers only serve API JSON + manifest rewrites (fast requests).
+; IPTV/VOD media is fetched by the browser or its configured external proxy,
+; so these workers only serve API JSON and sync requests.
 pm.max_children = 30
 pm.start_servers = 8
 pm.min_spare_servers = 4

@@ -4,14 +4,17 @@ namespace App\Services\IptvVod;
 
 use App\Models\Episode;
 use App\Models\Title;
-use App\Services\Streaming\StreamSigner;
-use Illuminate\Http\Request;
+use App\Services\Iptv\IptvProxyPool;
+use App\Services\SyncSettings;
 
 class IptvVodPlayback
 {
-    public function __construct(private readonly StreamSigner $signer) {}
+    public function __construct(
+        private readonly IptvProxyPool $proxyPool,
+        private readonly SyncSettings $settings,
+    ) {}
 
-    public function titleStreams(Request $request, Title $title): ?array
+    public function titleStreams(Title $title): ?array
     {
         if ($title->source !== 'iptv_vod') {
             return null;
@@ -22,21 +25,18 @@ class IptvVodPlayback
         }
 
         if ($this->usesLocalFixtures()) {
-            return $this->fixtureStreams();
+            return $this->fixtureStreams($title->source_playlist_id);
         }
 
         return [$this->streamData(
-            $request,
-            'title',
-            $title->id,
             $title->stream_url,
             $title->quality,
             $title->languages[0] ?? 'Original',
-            (array) $title->stream_headers,
+            $title->source_playlist_id,
         )];
     }
 
-    public function episodeStreams(Request $request, Episode $episode): ?array
+    public function episodeStreams(Episode $episode): ?array
     {
         // Season has a `title` column too, so resolve the relationship explicitly.
         $title = $episode->season?->title()->first();
@@ -49,75 +49,48 @@ class IptvVodPlayback
         }
 
         if ($this->usesLocalFixtures()) {
-            return $this->fixtureStreams();
+            return $this->fixtureStreams($episode->source_playlist_id);
         }
 
         return [$this->streamData(
-            $request,
-            'episode',
-            $episode->id,
             $episode->stream_url,
             $title->quality,
             $title->languages[0] ?? 'Original',
-            (array) $episode->stream_headers,
+            $episode->source_playlist_id,
         )];
     }
 
-    public function proxyUrl(Request $request, string $kind, int $id, int $expires, string $target): string
-    {
-        return rtrim($request->getSchemeAndHttpHost(), '/')."/api/v1/vod/{$kind}/{$id}/stream?".http_build_query([
-            'target' => $target,
-            'expires' => $expires,
-            'signature' => $this->signature($kind, $id, $expires, $target),
-        ]);
-    }
-
-    public function valid(string $kind, int $id, int $expires, string $target, string $signature): bool
-    {
-        return $expires > now()->timestamp
-            && $expires <= now()->addHours(13)->timestamp
-            && hash_equals($this->signature($kind, $id, $expires, $target), $signature)
-            && in_array(parse_url($target, PHP_URL_SCHEME), ['http', 'https'], true)
-            && filter_var($target, FILTER_VALIDATE_URL) !== false;
-    }
-
-    /**
-     * @param  array<string, string>  $upstreamHeaders
-     */
     private function streamData(
-        Request $request,
-        string $kind,
-        int $id,
         string $target,
         ?string $quality,
         string $language,
-        array $upstreamHeaders = [],
+        ?string $playlistId,
     ): array {
-        $expires = now()->addHours(12)->timestamp;
         $path = strtolower((string) parse_url($target, PHP_URL_PATH));
         $isDirectVideo = preg_match('/\.(?:mp4|m4v|webm|mov)$/', $path) === 1;
-
-        // Direct video is raw bytes with no manifest to rewrite: hand it
-        // straight to the external media proxy when one is configured.
-        $mp4Url = null;
-        if ($isDirectVideo) {
-            $mp4Url = $this->signer->externalUrl($target, $expires, [
-                'User-Agent' => 'Pixflix/1.0 IPTV VOD player',
-                ...$upstreamHeaders,
-            ]) ?? $this->proxyUrl($request, $kind, $id, $expires, $target);
-        }
 
         return [
             'quality' => $quality ?: 'Automática',
             'language' => $language,
-            'hls' => $isDirectVideo ? null : $this->proxyUrl($request, $kind, $id, $expires, $target),
-            'mp4' => $mp4Url,
+            'hls' => $isDirectVideo ? null : $target,
+            'mp4' => $isDirectVideo ? $target : null,
+            'proxy' => $this->proxyConfig($playlistId),
         ];
     }
 
-    private function signature(string $kind, int $id, int $expires, string $target): string
+    /** @return array{required: bool, proxies: array<int, array{id: string, name: string, base_url: string, priority: int}>} */
+    private function proxyConfig(?string $playlistId): array
     {
-        return hash_hmac('sha256', "{$kind}|{$id}|{$expires}|{$target}", (string) config('app.key'));
+        $playlists = $this->settings->get('iptv.vod_playlists', []);
+        $playlist = is_array($playlists)
+            ? collect($playlists)->first(fn (mixed $item): bool => is_array($item) && (string) ($item['id'] ?? '') === (string) $playlistId)
+            : null;
+
+        // Existing imported VOD records predate this setting. Keep them
+        // protected until an administrator explicitly disables the proxy.
+        $required = is_array($playlist) ? (bool) ($playlist['use_proxy'] ?? true) : true;
+
+        return $this->proxyPool->playbackConfig($required);
     }
 
     private function usesLocalFixtures(): bool
@@ -126,7 +99,7 @@ class IptvVodPlayback
             && (bool) config('pixflix.catalog.use_fixtures', false);
     }
 
-    private function fixtureStreams(): array
+    private function fixtureStreams(?string $playlistId): array
     {
         return [[
             'quality' => '1080p',
@@ -136,6 +109,7 @@ class IptvVodPlayback
                 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
             ),
             'mp4' => null,
+            'proxy' => $this->proxyConfig($playlistId),
         ]];
     }
 }

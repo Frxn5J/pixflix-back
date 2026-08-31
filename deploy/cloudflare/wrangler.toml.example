@@ -3,7 +3,8 @@ main = "iptv-stream-worker.js"
 compatibility_date = "2024-09-01"
 
 # El secret NUNCA va aqui: se sube con
-#   npx wrangler secret put PIXFLIX_STREAM_SECRET
-# y debe ser el mismo valor que PIXFLIX_STREAM_PROXY_SECRET en el .env del backend.
+#   npx wrangler secret put PIXFLIX_IPTV_PROXY_TOKEN
+# y se conserva como `?token=...` en la URL del proxy que se registra
+# en el panel administrativo de Pixflix.
 [vars]
 # (ninguna variable publica requerida)
