@@ -194,6 +194,7 @@ class StremioCatalogSyncTest extends TestCase
     public function test_admin_can_force_stremio_catalog_import(): void
     {
         $this->fakeCatalogAddon();
+        app(SyncSettings::class)->put('stremio.primary', false);
         $admin = User::factory()->admin()->create();
         $token = $this->postJson('/api/v1/auth/login', [
             'login' => $admin->email,
@@ -207,7 +208,10 @@ class StremioCatalogSyncTest extends TestCase
             ->assertJsonPath('data.status', 'success')
             ->assertJsonPath('data.titles', 2)
             ->assertJsonPath('data.movies', 1)
-            ->assertJsonPath('data.series', 1);
+            ->assertJsonPath('data.series', 1)
+            ->assertJsonPath('data.addon_counts.0.movies', 1)
+            ->assertJsonPath('data.addon_counts.0.series', 1)
+            ->assertJsonPath('data.addon_counts.0.titles', 2);
     }
 
     public function test_imported_stremio_id_and_addon_query_are_used_for_playback(): void

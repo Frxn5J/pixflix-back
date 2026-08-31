@@ -9,12 +9,13 @@ use App\Services\Iptv\IptvProxyPool;
 use App\Services\Iptv\IptvResourceSyncService;
 use App\Services\IptvOrg\IptvOrgSyncService;
 use App\Services\IptvVod\IptvVodSyncService;
+use App\Services\SyncProgressService;
 use App\Services\SyncSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Throwable;
 
@@ -23,6 +24,7 @@ class AdminWebController extends Controller
     public function __construct(
         private readonly AdminController $admin,
         private readonly SyncSettings $settings,
+        private readonly SyncProgressService $progress,
     ) {}
 
     public function dashboard(Request $request, IptvProxyPool $proxyPool): View
@@ -39,7 +41,21 @@ class AdminWebController extends Controller
             'iptvVodPlaylists' => $this->data($this->admin->iptvVodPlaylists())['playlists'] ?? [],
             'iptvProxies' => $this->data($this->admin->iptvProxies($proxyPool))['proxies'] ?? [],
             'streamFallback' => $this->data($this->admin->streamFallback()),
+            'syncProgress' => $this->progress->dashboard($request->session()->get('sync_id')),
         ]);
+    }
+
+    public function syncStatus(string $id): JsonResponse
+    {
+        $state = $this->progress->get($id);
+        if ($state === null) {
+            return response()->json(['error' => [
+                'code' => 'sync_not_found',
+                'message' => 'La sincronización ya no está disponible.',
+            ]], 404);
+        }
+
+        return response()->json(['data' => $state]);
     }
 
     public function updateUser(Request $request, int $id): RedirectResponse
@@ -332,7 +348,8 @@ class AdminWebController extends Controller
     private function forward(string $section, callable $operation, string $message): RedirectResponse
     {
         try {
-            $this->assertSuccessful($operation());
+            $response = $operation();
+            $this->assertSuccessful($response);
         } catch (Throwable $exception) {
             Log::warning('Admin web action failed', [
                 'section' => $section,
@@ -342,7 +359,15 @@ class AdminWebController extends Controller
             return $this->redirectTo($section)->withInput()->withErrors(['admin' => $exception->getMessage()]);
         }
 
-        return $this->redirectTo($section)->with('success', $message);
+        $redirect = $this->redirectTo($section)->with('success', $message);
+        $payload = $response->getData(true);
+        $data = is_array($payload['data'] ?? null) ? $payload['data'] : [];
+        if (is_string($data['sync_id'] ?? null) && $data['sync_id'] !== '') {
+            $redirect->with('sync_id', $data['sync_id']);
+            $redirect->with('sync_type', $data['sync_type'] ?? null);
+        }
+
+        return $redirect;
     }
 
     private function redirectTo(string $section): RedirectResponse

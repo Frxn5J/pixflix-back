@@ -72,9 +72,21 @@
         .source-row:first-child { border-top:0; padding-top:0; }
         .source-row .wide { min-width:0; }
         code { color:#c7f8dd; }
-        .status { display:inline-block; padding:3px 8px; border-radius:999px; color:#caffdf; background:#163c2b; font-size:12px; }
-        .status.off { color:#ffdce0; background:#49232b; }
-        .result { margin-top:14px; padding:13px; border:1px solid #69562a; border-radius:10px; color:#ffe8a8; background:#2c2514; }
+         .status { display:inline-block; padding:3px 8px; border-radius:999px; color:#caffdf; background:#163c2b; font-size:12px; }
+         .status.off { color:#ffdce0; background:#49232b; }
+         .sync-monitor { margin-top:18px; }
+         .sync-list { display:grid; gap:12px; }
+         .sync-item { padding:14px; border:1px solid var(--line); border-radius:11px; background:rgba(8,13,18,.38); }
+         .sync-item-heading,.sync-meta { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+         .sync-item-heading small { display:block; margin-top:3px; color:var(--muted); }
+         .progress-track { height:9px; margin:13px 0 8px; overflow:hidden; border-radius:999px; background:#0a1218; }
+         .progress-track span { display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg,#55e6a5,#7be8ff); transition:width .35s ease; }
+         .progress-track span.indeterminate { width:38% !important; animation:sync-progress 1.2s ease-in-out infinite alternate; }
+         .sync-meta { color:var(--muted); font-size:12px; }
+         .sync-error { margin:10px 0 0; color:#ffdce0; }
+         .sync-result { margin:10px 0 0; color:#caffdf; font-size:13px; }
+         @keyframes sync-progress { from { transform:translateX(-30%); } to { transform:translateX(190%); } }
+         .result { margin-top:14px; padding:13px; border:1px solid #69562a; border-radius:10px; color:#ffe8a8; background:#2c2514; }
         .result pre { margin:9px 0 0; max-height:220px; overflow:auto; white-space:pre-wrap; font-size:12px; }
         .empty { padding:20px 0; color:var(--muted); }
         @media (max-width:1000px) { .metric-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .form-grid,.grid-3 { grid-template-columns:repeat(2,minmax(0,1fr)); } .collection-row,.source-row { grid-template-columns:repeat(2,minmax(0,1fr)); } }

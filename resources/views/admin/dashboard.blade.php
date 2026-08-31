@@ -26,6 +26,42 @@
     @endforeach
 </nav>
 
+@if (count($syncProgress ?? []))
+    <section class="panel sync-monitor" aria-live="polite">
+        <div class="panel-heading">
+            <div>
+                <p class="eyebrow">PROCESOS EN SEGUNDO PLANO</p>
+                <h2>Sincronizaciones</h2>
+                <p class="muted">El avance se actualiza automáticamente cada pocos segundos.</p>
+            </div>
+        </div>
+        <div class="sync-list">
+            @foreach ($syncProgress as $state)
+                @php
+                    $percentage = is_numeric($state['percentage'] ?? null) ? max(0, min(100, (int) $state['percentage'])) : 0;
+                    $statusLabel = match ($state['status'] ?? null) {
+                        'queued' => 'En cola',
+                        'running' => 'En curso',
+                        'completed' => 'Completada',
+                        'failed' => 'Con error',
+                        default => 'Estado desconocido',
+                    };
+                @endphp
+                <article class="sync-item" data-sync-progress data-sync-id="{{ $state['id'] }}" data-sync-type="{{ $state['type'] }}" data-sync-initial-status="{{ $state['status'] }}" data-sync-status-url="{{ route('admin.sync-status', ['id' => $state['id']]) }}">
+                    <div class="sync-item-heading">
+                        <div><strong data-sync-label>{{ $state['label'] }}</strong><small data-sync-message>{{ $state['message'] }}</small></div>
+                        <span class="status" data-sync-status>{{ $statusLabel }}</span>
+                    </div>
+                    <div class="progress-track" role="progressbar" aria-label="Avance de {{ $state['label'] }}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ $percentage }}"><span data-sync-bar style="width:{{ $percentage }}%"></span></div>
+                    <div class="sync-meta"><span data-sync-percent>{{ $state['percentage'] === null ? 'Avance calculándose' : $percentage.'%' }}</span><span data-sync-count>{{ $state['current'] ?? 0 }}{{ $state['total'] !== null ? ' de '.$state['total'] : '' }} elementos</span><span data-sync-eta>{{ $state['eta_label'] ?? 'Tiempo restante calculándose' }}</span></div>
+                    <p class="sync-error" data-sync-error hidden></p>
+                    <p class="sync-result" data-sync-result hidden></p>
+                </article>
+            @endforeach
+        </div>
+    </section>
+@endif
+
 @if ($section === 'overview')
     <div class="metric-grid">
         @foreach ([['users','Usuarios'],['subscribers','Suscriptores'],['active_subscriptions','Suscripciones activas'],['trials','Pruebas activas'],['plans','Planes'],['channels','Canales'],['active_channels','Canales activos'],['staff','Personal']] as [$key,$label])
@@ -81,6 +117,18 @@
 @elseif ($section === 'fallback')
     <section class="panel"><div class="panel-heading"><div><p class="eyebrow">FUENTE DE PLAYBACK</p><h2>Fuentes de streams</h2><p class="muted">Configura un addon Stremio como fuente principal y deja fuera la cache/API legacy.</p></div><span class="status @if (!($streamFallback['enabled'] ?? false)) off @endif">{{ ($streamFallback['enabled'] ?? false) ? 'Activo' : 'Inactivo' }}</span></div>
     <form method="POST" action="{{ route('admin.stream-fallback.update') }}">@csrf @method('PUT')<div class="grid-2"><label class="checkbox"><input type="hidden" name="primary" value="0"><input type="checkbox" name="primary" value="1" @checked($streamFallback['primary'] ?? false)> Usar Stremio como fuente principal</label><label class="checkbox"><input type="hidden" name="enabled" value="0"><input type="checkbox" name="enabled" value="1" @checked($streamFallback['enabled'] ?? false)> Activar fuente Stremio</label></div><div class="form-grid" style="margin-top:15px"><div class="field"><label>Idiomas permitidos, separados por coma</label><input name="languages_csv" value="{{ implode(', ', $streamFallback['languages'] ?? []) }}" placeholder="Latino, Español, English"></div><div class="field"><label>Timeout general (segundos)</label><input name="timeout_seconds" type="number" min="1" max="60" value="{{ $streamFallback['timeout_seconds'] ?? 10 }}" required></div><div class="field"><label>Cache de resoluciones (segundos)</label><input name="cache_ttl_seconds" type="number" min="60" max="604800" value="{{ $streamFallback['cache_ttl_seconds'] ?? 1800 }}" required></div></div><h3 style="margin-top:24px">Addons instalados</h3>@forelse ($streamFallback['addons'] ?? [] as $index => $addon)<div class="source-row"><input type="hidden" name="addons[{{ $index }}][id]" value="{{ $addon['id'] }}"><div class="field"><label>Nombre</label><input name="addons[{{ $index }}][name]" value="{{ $addon['name'] }}" required></div><div class="field wide"><label>URL base o manifest.json</label><input type="url" name="addons[{{ $index }}][base_url]" value="{{ $addon['base_url'] }}" required></div><div class="field"><label>Prioridad</label><input name="addons[{{ $index }}][priority]" type="number" min="1" value="{{ $addon['priority'] }}" required></div><div class="field"><label>Timeout</label><input name="addons[{{ $index }}][timeout_seconds]" type="number" min="1" max="60" value="{{ $addon['timeout_seconds'] ?? ($streamFallback['timeout_seconds'] ?? 10) }}"></div><label class="checkbox"><input type="hidden" name="addons[{{ $index }}][enabled]" value="0"><input type="checkbox" name="addons[{{ $index }}][enabled]" value="1" @checked($addon['enabled'])> Activo</label><button class="button small danger" type="submit" formaction="{{ route('admin.stream-fallback.addon.remove', $addon['id']) }}" formmethod="POST" name="_method" value="DELETE" onclick="return confirm('¿Eliminar este addon?')">Eliminar</button></div>@empty<p class="empty">No hay addons instalados.</p>@endforelse<div class="actions"><button class="button primary" type="submit">Guardar configuración</button><button class="button" type="submit" formaction="{{ route('admin.stream-fallback.sync-catalog') }}" formmethod="POST" name="_method" value="POST">Importar catálogo</button></div></form></section>
+    <section class="panel">
+        <div class="panel-heading"><div><p class="eyebrow">INVENTARIO DE CONTENIDO</p><h3>Contenido por addon de Stremio</h3><p class="muted">Conteo de películas y series detectado en la última importación del catálogo.</p></div>@if ($streamFallback['catalog_last_sync'] ?? null)<span class="status">Actualizado {{ \Carbon\CarbonImmutable::parse($streamFallback['catalog_last_sync'])->format('d/m/Y H:i') }}</span>@endif</div>
+        @if (count($streamFallback['addon_counts'] ?? []))
+            <div class="table-wrap"><table><thead><tr><th>Addon</th><th>Películas</th><th>Series</th><th>Total</th><th>Catálogos</th></tr></thead><tbody>
+            @foreach ($streamFallback['addon_counts'] as $addonCount)
+                <tr><td><strong>{{ $addonCount['name'] }}</strong><small>{{ ($addonCount['enabled'] ?? true) ? 'Activo' : 'Inactivo' }}</small></td><td>{{ $addonCount['movies'] ?? 0 }}</td><td>{{ $addonCount['series'] ?? 0 }}</td><td><strong>{{ $addonCount['titles'] ?? 0 }}</strong></td><td>{{ $addonCount['catalogs'] ?? 0 }}</td></tr>
+            @endforeach
+            </tbody></table></div>
+        @else
+            <p class="empty">Todavía no hay conteos. Usa «Importar catálogo» para consultar cada addon.</p>
+        @endif
+    </section>
     @if (session('verification'))<div class="result"><strong>Resultado de verificación del addon</strong><pre>{{ json_encode(session('verification'), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) }}</pre></div>@endif
     @if (session('content_verification'))<div class="result"><strong>Reporte de contenido</strong><pre>{{ json_encode(session('content_verification'), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) }}</pre></div>@endif
     <section class="panel"><h3>Verificar e instalar addon</h3><p class="hint">Laravel validará el manifest y que publique recursos de catálogo y streams antes de guardarlo.</p><form method="POST" action="{{ route('admin.stream-fallback.addon') }}">@csrf<div class="form-grid"><div class="field"><label>Nombre</label><input name="name" value="{{ old('name') }}" required></div><div class="field"><label>URL base o manifest.json</label><input name="base_url" type="url" value="{{ old('base_url') }}" placeholder="https://addon.example/manifest.json" required></div><div class="field"><label>Prioridad</label><input name="priority" type="number" min="1" value="{{ old('priority', 1) }}" required></div><div class="field"><label>Timeout</label><input name="timeout_seconds" type="number" min="1" max="60" value="{{ old('timeout_seconds', $streamFallback['timeout_seconds'] ?? 10) }}" required></div></div><div class="actions"><button class="button primary" type="submit">Verificar e instalar addon</button></div></form></section>
@@ -89,4 +137,63 @@
     <section class="panel"><div class="panel-heading"><div><p class="eyebrow">ALTAS RÁPIDAS</p><h2>Crear cuenta de prueba</h2><p class="muted">Genera una cuenta de una hora y muestra sus credenciales una sola vez.</p></div></div><form method="POST" action="{{ route('admin.trials.store') }}">@csrf<div class="form-grid"><div class="field"><label>Nombre (opcional)</label><input name="name" placeholder="Cuenta de prueba"></div><div class="field"><label>Referencia (opcional)</label><input name="label" placeholder="WhatsApp, campaña, etc."></div></div><div class="actions"><button class="button primary" type="submit">Crear cuenta de prueba</button></div></form></section>
     @if (session('trial_credentials'))@php($trial = session('trial_credentials'))<section class="panel"><h3>Credenciales generadas</h3><div class="grid-3"><div class="metric"><span>Usuario</span><strong>{{ $trial['username'] }}</strong></div><div class="metric"><span>Contraseña</span><strong>{{ $trial['password'] }}</strong></div><div class="metric"><span>Expira</span><strong>{{ $trial['expires_at'] }}</strong></div></div><p class="hint" style="margin-top:14px">Guarda estas credenciales antes de salir; no se volverán a mostrar automáticamente.</p></section>@endif
 @endif
+@endsection
+
+@section('scripts')
+<script>
+(() => {
+    const statusNames = { queued: 'En cola', running: 'En curso', completed: 'Completada', failed: 'Con error' };
+    const activeStatuses = new Set(['queued', 'running']);
+    const formatResult = (result) => {
+        if (!result || typeof result !== 'object') return '';
+        const parts = [];
+        [['titles', 'títulos'], ['movies', 'películas'], ['series', 'series'], ['episodes', 'episodios'], ['channels', 'canales'], ['streams', 'streams']].forEach(([key, label]) => {
+            if (result[key] !== undefined && result[key] !== null) parts.push(`${result[key]} ${label}`);
+        });
+        return parts.length ? `Resultado: ${parts.join(' · ')}` : '';
+    };
+    const render = (card, state) => {
+        const percentage = Number.isFinite(Number(state.percentage)) ? Math.max(0, Math.min(100, Number(state.percentage))) : 0;
+        const indeterminate = state.percentage === null || state.percentage === undefined;
+        const bar = card.querySelector('[data-sync-bar]');
+        const progress = card.querySelector('[role="progressbar"]');
+        const status = card.querySelector('[data-sync-status]');
+        const percent = card.querySelector('[data-sync-percent]');
+        const count = card.querySelector('[data-sync-count]');
+        const eta = card.querySelector('[data-sync-eta]');
+        const message = card.querySelector('[data-sync-message]');
+        const error = card.querySelector('[data-sync-error]');
+        const result = card.querySelector('[data-sync-result]');
+        bar.style.width = `${percentage}%`;
+        bar.classList.toggle('indeterminate', indeterminate && activeStatuses.has(state.status));
+        progress.setAttribute('aria-valuenow', String(percentage));
+        status.textContent = statusNames[state.status] || state.status || 'Desconocido';
+        percent.textContent = indeterminate ? 'Avance calculándose' : `${percentage}%`;
+        count.textContent = `${state.current || 0}${state.total !== null && state.total !== undefined ? ` de ${state.total}` : ''} elementos`;
+        eta.textContent = state.status === 'completed' ? 'Listo' : (state.eta_label || 'Tiempo restante calculándose');
+        message.textContent = state.message || '';
+        error.hidden = !state.error;
+        error.textContent = state.error || '';
+        const resultText = formatResult(state.result);
+        result.hidden = !resultText;
+        result.textContent = resultText;
+    };
+    const poll = async (card) => {
+        try {
+            const response = await fetch(card.dataset.syncStatusUrl, { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
+            if (!response.ok) return;
+            const payload = await response.json();
+            if (payload.data) render(card, payload.data);
+            if (payload.data && activeStatuses.has(payload.data.status)) window.setTimeout(() => poll(card), 2500);
+            if (payload.data && payload.data.status === 'completed' && card.dataset.syncType === 'stremio' && activeStatuses.has(card.dataset.syncInitialStatus) && !card.dataset.reloaded) {
+                card.dataset.reloaded = '1';
+                window.setTimeout(() => window.location.reload(), 500);
+            }
+        } catch (_) {
+            window.setTimeout(() => poll(card), 5000);
+        }
+    };
+    document.querySelectorAll('[data-sync-progress]').forEach((card) => poll(card));
+})();
+</script>
 @endsection

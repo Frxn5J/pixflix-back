@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Jobs\RefreshIptvResourcesJob;
 use App\Jobs\SyncIptvJob;
 use App\Jobs\SyncIptvVodJob;
+use App\Jobs\SyncStremioCatalogJob;
 use App\Models\Channel;
 use App\Models\Plan;
 use App\Models\Subscription;
@@ -16,15 +17,20 @@ use App\Services\Iptv\IptvProxyPool;
 use App\Services\Iptv\IptvResourceSyncService;
 use App\Services\IptvOrg\IptvOrgSyncService;
 use App\Services\IptvVod\IptvVodSyncService;
+use App\Services\SyncProgressService;
 use App\Services\SyncSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class AdminController extends Controller
 {
-    public function __construct(private readonly SyncSettings $settings) {}
+    public function __construct(
+        private readonly SyncSettings $settings,
+        private readonly SyncProgressService $progress,
+    ) {}
 
     public function overview(): JsonResponse
     {
@@ -271,22 +277,45 @@ class AdminController extends Controller
 
     public function syncIptvPlaylists(IptvOrgSyncService $sync): JsonResponse
     {
+        $progress = $this->progress->start('iptv', 'Sincronización de canales IPTV');
+        $syncId = (string) $progress['id'];
+        if ($progress['already_running'] ?? false) {
+            return response()->json(['data' => [
+                'queued' => true,
+                'sync_id' => $syncId,
+                'sync_type' => 'iptv',
+                'message' => 'Ya hay una sincronización IPTV en curso.',
+            ]], 202);
+        }
+
         if ($this->syncIsAsync()) {
-            SyncIptvJob::dispatch();
+            SyncIptvJob::dispatch($syncId);
 
             return response()->json(['data' => [
                 'queued' => true,
+                'sync_id' => $syncId,
+                'sync_type' => 'iptv',
                 'message' => 'La sincronizacion IPTV quedo en cola y se ejecutara en segundo plano.',
             ]], 202);
         }
 
         try {
-            return response()->json(['data' => $sync->run(
+            $result = $sync->run(
                 config('pixflix.iptv.country'),
                 null,
                 config('pixflix.iptv.max_channels'),
-            )]);
+                $syncId,
+            );
+            $this->progress->complete($syncId, $result);
+
+            return response()->json(['data' => [
+                ...$result,
+                'sync_id' => $syncId,
+                'sync_type' => 'iptv',
+            ]]);
         } catch (\Throwable $exception) {
+            $this->progress->fail($syncId, $exception);
+
             return response()->json(['error' => [
                 'code' => 'iptv_sync_failed',
                 'message' => $exception->getMessage(),
@@ -337,18 +366,40 @@ class AdminController extends Controller
 
     public function syncIptvVodPlaylists(IptvVodSyncService $sync): JsonResponse
     {
+        $progress = $this->progress->start('iptv_vod', 'Sincronización de VOD IPTV');
+        $syncId = (string) $progress['id'];
+        if ($progress['already_running'] ?? false) {
+            return response()->json(['data' => [
+                'queued' => true,
+                'sync_id' => $syncId,
+                'sync_type' => 'iptv_vod',
+                'message' => 'Ya hay una sincronización VOD en curso.',
+            ]], 202);
+        }
+
         if ($this->syncIsAsync()) {
-            SyncIptvVodJob::dispatch();
+            SyncIptvVodJob::dispatch($syncId);
 
             return response()->json(['data' => [
                 'queued' => true,
+                'sync_id' => $syncId,
+                'sync_type' => 'iptv_vod',
                 'message' => 'La sincronizacion VOD quedo en cola y se ejecutara en segundo plano.',
             ]], 202);
         }
 
         try {
-            return response()->json(['data' => $sync->run()]);
+            $result = $sync->run($syncId);
+            $this->progress->complete($syncId, $result);
+
+            return response()->json(['data' => [
+                ...$result,
+                'sync_id' => $syncId,
+                'sync_type' => 'iptv_vod',
+            ]]);
         } catch (\Throwable $exception) {
+            $this->progress->fail($syncId, $exception);
+
             return response()->json(['error' => [
                 'code' => 'iptv_vod_sync_failed',
                 'message' => $exception->getMessage(),
@@ -495,7 +546,45 @@ class AdminController extends Controller
 
     public function syncStreamFallbackCatalog(StremioCatalogSyncService $sync): JsonResponse
     {
-        return response()->json(['data' => $sync->sync(true)]);
+        $progress = $this->progress->start('stremio', 'Sincronización del catálogo Stremio');
+        $syncId = (string) $progress['id'];
+        if ($progress['already_running'] ?? false) {
+            return response()->json(['data' => [
+                'queued' => true,
+                'sync_id' => $syncId,
+                'sync_type' => 'stremio',
+                'message' => 'Ya hay una sincronización Stremio en curso.',
+            ]], 202);
+        }
+
+        if ($this->syncIsAsync()) {
+            SyncStremioCatalogJob::dispatch($syncId);
+
+            return response()->json(['data' => [
+                'queued' => true,
+                'sync_id' => $syncId,
+                'sync_type' => 'stremio',
+                'message' => 'La sincronización Stremio quedó en cola y se ejecutará en segundo plano.',
+            ]], 202);
+        }
+
+        try {
+            $result = $sync->sync(true, $syncId);
+            $this->progress->complete($syncId, $result);
+
+            return response()->json(['data' => [
+                ...$result,
+                'sync_id' => $syncId,
+                'sync_type' => 'stremio',
+            ]]);
+        } catch (\Throwable $exception) {
+            $this->progress->fail($syncId, $exception);
+
+            return response()->json(['error' => [
+                'code' => 'stremio_catalog_sync_failed',
+                'message' => $exception->getMessage(),
+            ]], 502);
+        }
     }
 
     public function verifyStreamFallbackAddon(Request $request, StremioAddonVerifier $verifier): JsonResponse
@@ -664,6 +753,30 @@ class AdminController extends Controller
     private function streamFallbackData(): array
     {
         $addons = $this->settings->get('stremio.addons', config('pixflix.stremio.addons', []));
+        $configuredAddons = is_array($addons)
+            ? array_values(array_filter($addons, 'is_array'))
+            : [];
+        $lastSync = Cache::get('pixflix:stremio:catalog:last-sync');
+        $lastCounts = is_array($lastSync) && is_array($lastSync['addon_counts'] ?? null)
+            ? collect(array_filter($lastSync['addon_counts'], 'is_array'))->keyBy(fn (array $count): string => (string) ($count['id'] ?? ''))
+            : collect();
+        $addonCounts = collect($configuredAddons)
+            ->map(function (array $addon) use ($lastCounts): array {
+                $id = trim((string) ($addon['id'] ?? ''));
+                $count = $lastCounts->get($id, []);
+
+                return [
+                    'id' => $id,
+                    'name' => trim((string) ($addon['name'] ?? 'Addon Stremio')) ?: 'Addon Stremio',
+                    'enabled' => (bool) ($addon['enabled'] ?? true),
+                    'movies' => (int) ($count['movies'] ?? 0),
+                    'series' => (int) ($count['series'] ?? 0),
+                    'titles' => (int) ($count['titles'] ?? 0),
+                    'catalogs' => (int) ($count['catalogs'] ?? 0),
+                ];
+            })
+            ->values()
+            ->all();
 
         return [
             'enabled' => (bool) $this->settings->get('stremio.enabled', config('pixflix.stremio.enabled', false)),
@@ -672,6 +785,8 @@ class AdminController extends Controller
             'cache_ttl_seconds' => (int) $this->settings->get('stremio.cache_ttl_seconds', config('pixflix.stremio.cache_ttl_seconds', 1800)),
             'languages' => $this->settings->get('stremio.languages', config('pixflix.stremio.languages', [])),
             'addons' => is_array($addons) ? array_values($addons) : [],
+            'addon_counts' => $addonCounts,
+            'catalog_last_sync' => is_array($lastSync) ? ($lastSync['finished_at'] ?? null) : null,
         ];
     }
 }

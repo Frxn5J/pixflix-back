@@ -2,8 +2,9 @@
 
 namespace Tests\Feature;
 
-use App\Models\User;
 use App\Models\Setting;
+use App\Models\User;
+use App\Services\SyncProgressService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
 
@@ -99,5 +100,24 @@ class AdminWebAuthTest extends TestCase
                 ->get('/admin?section='.$section)
                 ->assertOk();
         }
+    }
+
+    public function test_admin_can_read_sync_progress(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $progress = app(SyncProgressService::class);
+        $state = $progress->start('test_sync', 'Sincronización de prueba');
+        $progress->running($state['id'], 10, 'Procesando elementos.');
+        $progress->update($state['id'], 5, 10, 'Procesando elementos.');
+
+        $this->actingAs($admin, 'web')
+            ->getJson('/admin/sync-status/'.$state['id'])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'running')
+            ->assertJsonPath('data.current', 5)
+            ->assertJsonPath('data.total', 10)
+            ->assertJsonPath('data.percentage', 50);
+
+        $progress->complete($state['id']);
     }
 }

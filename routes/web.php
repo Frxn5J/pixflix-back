@@ -29,6 +29,7 @@ Route::post('/admin/login', [AdminWebAuthController::class, 'login'])
 
 Route::prefix('admin')->name('admin.')->middleware(['auth', 'admin.web'])->group(function () {
     Route::get('/', [AdminWebController::class, 'dashboard'])->name('dashboard');
+    Route::get('/sync-status/{id}', [AdminWebController::class, 'syncStatus'])->name('sync-status');
     Route::post('/logout', [AdminWebAuthController::class, 'logout'])->name('logout');
 
     Route::put('/users/{id}', [AdminWebController::class, 'updateUser'])->name('users.update');

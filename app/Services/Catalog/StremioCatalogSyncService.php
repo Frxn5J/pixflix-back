@@ -5,6 +5,7 @@ namespace App\Services\Catalog;
 use App\Models\Episode;
 use App\Models\Season;
 use App\Models\Title;
+use App\Services\SyncProgressService;
 use App\Services\SyncSettings;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
@@ -21,6 +22,7 @@ class StremioCatalogSyncService
     public function __construct(
         private readonly SyncSettings $settings,
         private readonly TmdbMetadataClient $tmdb,
+        private readonly SyncProgressService $progress,
     ) {}
 
     /**
@@ -55,11 +57,15 @@ class StremioCatalogSyncService
     /**
      * @return array{status: string, addons: int, catalogs: int, titles: int, movies: int, series: int, episodes: int, deactivated: int, truncated: bool, errors: array<int, string>}
      */
-    public function sync(bool $force = false): array
+    public function sync(bool $force = false, ?string $progressId = null): array
     {
         $empty = $this->emptyResult();
 
-        if (! $this->isPrimary()) {
+        if ($progressId !== null) {
+            $this->progress->running($progressId, null, 'Preparando sincronización del catálogo Stremio.');
+        }
+
+        if (! $this->isEnabled()) {
             return [...$empty, 'status' => 'disabled'];
         }
 
@@ -91,7 +97,7 @@ class StremioCatalogSyncService
                 }
             }
 
-            $result = $this->performSync();
+            $result = $this->performSync($progressId);
             Cache::put(
                 $this->lastSyncKey(),
                 $result,
@@ -212,14 +218,31 @@ class StremioCatalogSyncService
     }
 
     /** @return array<string, mixed> */
-    private function performSync(): array
+    private function performSync(?string $progressId = null): array
     {
         $result = $this->emptyResult();
         $items = [];
+        $addons = $this->addons();
+        $addonStats = [];
+        $addonSeen = [];
         $maxItems = max(1, (int) config('pixflix.stremio.catalog_max_items', 500));
+        $processed = 0;
 
-        foreach ($this->addons() as $addon) {
+        foreach ($addons as $addon) {
+            $addonId = (string) $addon['id'];
+            $addonStats[$addonId] ??= [
+                'id' => $addonId,
+                'name' => $addon['name'],
+                'movies' => 0,
+                'series' => 0,
+                'titles' => 0,
+                'catalogs' => 0,
+            ];
+            $addonSeen[$addonId] ??= [];
             $result['addons']++;
+            if ($progressId !== null) {
+                $this->progress->update($progressId, $processed, null, 'Consultando manifest de '.$addon['name'].'.');
+            }
             try {
                 $manifestResponse = Http::acceptJson()
                     ->timeout($this->timeout($addon))
@@ -254,6 +277,7 @@ class StremioCatalogSyncService
                 }
 
                 $result['catalogs']++;
+                $addonStats[$addonId]['catalogs']++;
                 $catalogFinished = false;
                 $maxPages = max(1, (int) config('pixflix.stremio.catalog_max_pages', 10));
 
@@ -306,7 +330,23 @@ class StremioCatalogSyncService
                             continue;
                         }
 
+                        $addonItemKey = $item['type'].':'.$item['external_id'];
+                        if (! isset($addonSeen[$addonId][$addonItemKey])) {
+                            $addonSeen[$addonId][$addonItemKey] = true;
+                            $addonStats[$addonId]['titles']++;
+                            $addonStats[$addonId][$item['type'] === 'movie' ? 'movies' : 'series']++;
+                        }
+
                         $items[$item['external_id']] ??= $item;
+                        $processed++;
+                        if ($progressId !== null) {
+                            $this->progress->update(
+                                $progressId,
+                                $processed,
+                                null,
+                                $addon['name'].' · '.$addonStats[$addonId]['movies'].' películas · '.$addonStats[$addonId]['series'].' series.',
+                            );
+                        }
                     }
 
                     if (count($metas) < self::PAGE_SIZE || $result['truncated']) {
@@ -327,6 +367,8 @@ class StremioCatalogSyncService
                 break;
             }
         }
+
+        $result['addon_counts'] = array_values($addonStats);
 
         if ($items !== [] || (! $result['truncated'] && $result['errors'] === [])) {
             DB::transaction(function () use ($items, &$result): void {
@@ -360,6 +402,7 @@ class StremioCatalogSyncService
         }
 
         $result['status'] = $result['errors'] === [] ? 'success' : 'partial';
+        $result['finished_at'] = now()->toIso8601String();
 
         return $result;
     }
@@ -493,14 +536,21 @@ class StremioCatalogSyncService
             'episodes' => 0,
             'deactivated' => 0,
             'truncated' => false,
+            'addon_counts' => [],
+            'finished_at' => null,
             'errors' => [],
         ];
     }
 
     private function isPrimary(): bool
     {
-        return (bool) $this->settings->get('stremio.enabled', config('pixflix.stremio.enabled', false))
+        return $this->isEnabled()
             && (bool) $this->settings->get('stremio.primary', config('pixflix.stremio.primary', false));
+    }
+
+    private function isEnabled(): bool
+    {
+        return (bool) $this->settings->get('stremio.enabled', config('pixflix.stremio.enabled', false));
     }
 
     /** @return array<int, array<string, mixed>> */

@@ -3,6 +3,7 @@
 namespace App\Services\IptvOrg;
 
 use App\Models\Channel;
+use App\Services\SyncProgressService;
 use App\Services\SyncSettings;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -12,22 +13,37 @@ class IptvOrgSyncService
     public function __construct(
         private readonly IptvOrgClient $client,
         private readonly SyncSettings $settings,
+        private readonly SyncProgressService $progress,
     ) {}
 
     /**
      * @return array{channels: int, streams: int, deactivated: int}
      */
-    public function run(?string $country = null, ?string $language = null, ?int $limit = null): array
+    public function run(?string $country = null, ?string $language = null, ?int $limit = null, ?string $progressId = null): array
     {
         $country = $this->cleanUpper($country);
         $language = $this->cleanLower($language);
         $limit = $limit !== null && $limit > 0 ? $limit : null;
         $rows = [];
         $seen = [];
+        $playlists = array_values(array_filter(
+            $this->configuredPlaylists(),
+            fn (array $playlist): bool => ($playlist['enabled'] ?? true) === true,
+        ));
+        $playlistTotal = count($playlists);
 
-        foreach ($this->configuredPlaylists() as $playlist) {
-            if (! ($playlist['enabled'] ?? true)) {
-                continue;
+        if ($progressId !== null) {
+            $this->progress->running($progressId, null, 'Descargando listas IPTV.');
+        }
+
+        foreach ($playlists as $playlistIndex => $playlist) {
+            if ($progressId !== null) {
+                $this->progress->update(
+                    $progressId,
+                    $playlistIndex,
+                    null,
+                    'Descargando '.((string) ($playlist['name'] ?? 'lista IPTV')).'.',
+                );
             }
 
             $playlistUrl = (string) $playlist['url'];
@@ -70,6 +86,15 @@ class IptvOrgSyncService
                     break 2;
                 }
             }
+
+            if ($progressId !== null) {
+                $this->progress->update(
+                    $progressId,
+                    $playlistIndex + 1,
+                    null,
+                    'Lista IPTV descargada; preparando canales.',
+                );
+            }
         }
 
         if ($rows === []) {
@@ -78,13 +103,23 @@ class IptvOrgSyncService
 
         $shouldDeactivate = $limit === null;
 
-        return DB::transaction(function () use ($rows, $shouldDeactivate, $country): array {
+        $workTotal = max(1, $playlistTotal + count($rows));
+        if ($progressId !== null) {
+            $this->progress->update($progressId, $playlistTotal, $workTotal, 'Guardando canales IPTV.');
+        }
+
+        return DB::transaction(function () use ($rows, $shouldDeactivate, $country, $progressId, $playlistTotal, $workTotal): array {
+            $processed = $playlistTotal;
             foreach (array_chunk($rows, 500) as $chunk) {
                 Channel::query()->upsert(
                     $chunk,
                     ['external_id'],
                     ['source_playlist_id', 'name', 'logo', 'category', 'country', 'language', 'stream_url', 'stream_headers', 'use_proxy', 'is_active', 'updated_at'],
                 );
+                $processed += count($chunk);
+                if ($progressId !== null) {
+                    $this->progress->update($progressId, $processed, $workTotal, 'Guardando canales IPTV.');
+                }
             }
 
             $deactivated = 0;

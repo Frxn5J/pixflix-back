@@ -45,11 +45,15 @@ class QueueAndCacheTest extends TestCase
 
         $this->withToken($token)->postJson('/api/v1/admin/iptv-playlists/sync')
             ->assertStatus(202)
-            ->assertJsonPath('data.queued', true);
+            ->assertJsonPath('data.queued', true)
+            ->assertJsonPath('data.sync_type', 'iptv')
+            ->assertJsonStructure(['data' => ['sync_id']]);
 
         $this->withToken($token)->postJson('/api/v1/admin/iptv-vod-playlists/sync')
             ->assertStatus(202)
-            ->assertJsonPath('data.queued', true);
+            ->assertJsonPath('data.queued', true)
+            ->assertJsonPath('data.sync_type', 'iptv_vod')
+            ->assertJsonStructure(['data' => ['sync_id']]);
 
         $this->withToken($token)->postJson('/api/v1/admin/iptv-resources/refresh')
             ->assertStatus(202)

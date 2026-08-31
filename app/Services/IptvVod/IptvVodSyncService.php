@@ -7,6 +7,7 @@ use App\Models\Season;
 use App\Models\Title;
 use App\Services\Catalog\TmdbMetadataClient;
 use App\Services\IptvOrg\IptvOrgClient;
+use App\Services\SyncProgressService;
 use App\Services\SyncSettings;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -19,19 +20,34 @@ class IptvVodSyncService
         private readonly IptvOrgClient $client,
         private readonly SyncSettings $settings,
         private readonly TmdbMetadataClient $tmdb,
+        private readonly SyncProgressService $progress,
     ) {}
 
     /**
      * @return array{titles: int, movies: int, series: int, episodes: int, deactivated: int}
      */
-    public function run(): array
+    public function run(?string $progressId = null): array
     {
         $movies = [];
         $series = [];
+        $playlists = array_values(array_filter(
+            $this->configuredPlaylists(),
+            fn (array $playlist): bool => ($playlist['enabled'] ?? true) === true,
+        ));
+        $playlistTotal = count($playlists);
 
-        foreach ($this->configuredPlaylists() as $playlist) {
-            if (! ($playlist['enabled'] ?? true)) {
-                continue;
+        if ($progressId !== null) {
+            $this->progress->running($progressId, null, 'Descargando listas VOD IPTV.');
+        }
+
+        foreach ($playlists as $playlistIndex => $playlist) {
+            if ($progressId !== null) {
+                $this->progress->update(
+                    $progressId,
+                    $playlistIndex,
+                    null,
+                    'Descargando '.((string) ($playlist['name'] ?? 'lista VOD')).'.',
+                );
             }
 
             $playlistId = trim((string) ($playlist['id'] ?? 'vod-playlist'));
@@ -79,15 +95,39 @@ class IptvVodSyncService
                     'language' => $entryLanguage,
                 ];
             }
+
+            if ($progressId !== null) {
+                $this->progress->update(
+                    $progressId,
+                    $playlistIndex + 1,
+                    null,
+                    'Lista VOD descargada; preparando metadatos TMDB.',
+                );
+            }
         }
 
         if ($movies === [] && $series === []) {
             throw new RuntimeException('Ninguna lista VOD activa devolvio contenido reproducible.');
         }
 
-        $result = DB::transaction(function () use ($movies, $series): array {
+        $episodeTotal = array_sum(array_map(
+            fn (array $seriesData): int => count($seriesData['episodes']),
+            $series,
+        ));
+        $workTotal = max(1, $playlistTotal + count($movies) + count($series) + $episodeTotal);
+        if ($progressId !== null) {
+            $this->progress->update(
+                $progressId,
+                $playlistTotal,
+                $workTotal,
+                'Procesando '.$workTotal.' elementos VOD.',
+            );
+        }
+
+        $result = DB::transaction(function () use ($movies, $series, $progressId, $playlistTotal, $workTotal): array {
             $activeTitleIds = [];
             $activeEpisodeIds = [];
+            $processed = $playlistTotal;
 
             foreach ($movies as $movie) {
                 $entry = $movie['entry'];
@@ -128,6 +168,10 @@ class IptvVodSyncService
                     ],
                 );
                 $activeTitleIds[] = $title->id;
+                $processed++;
+                if ($progressId !== null) {
+                    $this->progress->update($progressId, $processed, $workTotal, 'Consultando TMDB para películas VOD.');
+                }
             }
 
             foreach ($series as $seriesKey => $seriesData) {
@@ -175,6 +219,10 @@ class IptvVodSyncService
                     ],
                 );
                 $activeTitleIds[] = $title->id;
+                $processed++;
+                if ($progressId !== null) {
+                    $this->progress->update($progressId, $processed, $workTotal, 'Consultando TMDB para series VOD.');
+                }
 
                 foreach ($seasons as $seasonNumber => $episodes) {
                     $season = Season::query()->updateOrCreate(
@@ -204,6 +252,10 @@ class IptvVodSyncService
                             ],
                         );
                         $activeEpisodeIds[] = $episode->id;
+                        $processed++;
+                        if ($progressId !== null && ($processed % 10 === 0 || $processed >= $workTotal)) {
+                            $this->progress->update($progressId, $processed, $workTotal, 'Guardando episodios VOD.');
+                        }
                     }
                 }
             }
