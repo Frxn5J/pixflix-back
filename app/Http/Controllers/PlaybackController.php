@@ -11,6 +11,7 @@ use App\Models\Title;
 use App\Models\WatchProgress;
 use App\Services\Catalog\StreamResolver;
 use App\Services\IptvVod\IptvVodPlayback;
+use App\Support\UrlSafety;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -189,7 +190,7 @@ class PlaybackController extends Controller
             'duration_sec' => $p->duration_sec,
             'percent' => $p->percent,
             'completed' => $p->completed,
-            'title' => $p->title ? ['id' => $p->title->id, 'slug' => $p->title->slug, 'title' => $p->title->title, 'poster' => $p->title->poster, 'type' => $p->title->type] : null,
+            'title' => $p->title ? ['id' => $p->title->id, 'slug' => $p->title->slug, 'title' => $p->title->title, 'poster' => UrlSafety::http($p->title->poster), 'type' => $p->title->type] : null,
             'episode' => $p->episode ? ['id' => $p->episode->id, 'title' => $p->episode->title, 'number' => $p->episode->number] : null,
             'updated_at' => $p->updated_at?->toIso8601String(),
         ];

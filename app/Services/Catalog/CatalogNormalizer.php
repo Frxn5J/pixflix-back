@@ -2,6 +2,7 @@
 
 namespace App\Services\Catalog;
 
+use App\Support\UrlSafety;
 use Illuminate\Support\Str;
 
 class CatalogNormalizer
@@ -17,7 +18,7 @@ class CatalogNormalizer
             'type' => ($item['contentType'] ?? 'movie') === 'tvshow' ? 'tvshow' : 'movie',
             'title' => (string) ($item['title'] ?? 'Sin título'),
             'description' => null,
-            'poster' => $item['image'] ?? null,
+            'poster' => UrlSafety::http($item['image'] ?? null),
             'gallery' => [],
             'rating' => isset($item['rating']) ? (string) $item['rating'] : null,
             'year' => isset($item['year']) ? (string) $item['year'] : null,
@@ -40,7 +41,7 @@ class CatalogNormalizer
         ]);
 
         $title['description'] = $payload['description'] ?? null;
-        $title['gallery'] = array_values($payload['gallery'] ?? []);
+        $title['gallery'] = UrlSafety::httpList($payload['gallery'] ?? []);
         $title['genres'] = array_values($payload['genres'] ?? []);
         $title['total_seasons'] = $payload['totalSeasons'] ?? null;
         $title['total_episodes'] = $payload['totalEpisodes'] ?? null;
@@ -57,7 +58,7 @@ class CatalogNormalizer
                             'number' => $episode['episode'] ?? $episode['number'] ?? 0,
                             'title' => $episode['title'] ?? 'Episodio',
                             'url' => $episode['url'] ?? null,
-                            'image' => $episode['image'] ?? null,
+                            'image' => UrlSafety::http($episode['image'] ?? null),
                             'release_date' => $episode['releaseDate'] ?? null,
                             'extract_url' => $episode['extractUrl'] ?? null,
                         ],

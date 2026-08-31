@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Channel;
 use App\Models\EpgEntry;
 use App\Services\Iptv\IptvProxyPool;
+use App\Support\UrlSafety;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -196,7 +197,7 @@ class ChannelController extends Controller
         return [
             'id' => $channel->id,
             'name' => $channel->name,
-            'logo' => $channel->logo,
+            'logo' => UrlSafety::http($channel->logo),
             'category' => $channel->category,
             'country' => $channel->country,
             'language' => $channel->language,

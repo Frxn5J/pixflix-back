@@ -6,6 +6,7 @@ use App\Models\Subscription;
 use App\Models\Title;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -224,6 +225,87 @@ M3U),
         $this->assertSame('https://cdn.example/movie.mp4', $movie->stream_url);
         $this->assertSame('tvshow', $series->type);
         $this->assertCount(2, $series->seasons()->firstOrFail()->episodes);
+    }
+
+    public function test_iptv_vod_series_are_enriched_with_tmdb_metadata(): void
+    {
+        config()->set('pixflix.tmdb.api_key', 'test-key');
+        config()->set('pixflix.tmdb.access_token', '');
+        config()->set('pixflix.tmdb.base_url', 'https://tmdb.test/3');
+
+        $admin = User::factory()->admin()->create();
+        $token = $this->postJson('/api/v1/auth/login', [
+            'login' => $admin->email,
+            'password' => 'password',
+        ])->json('data.token');
+
+        Http::fake(function (Request $request) {
+            $url = $request->url();
+            if ($url === 'https://streams.example/vod-series.m3u') {
+                return Http::response(<<<'M3U'
+#EXTM3U
+#EXTINF:-1 tvg-id="series-1-1" group-title="Accion",Serie Demo S01E01 - Piloto
+https://cdn.example/series/s01e01/master.m3u8
+#EXTINF:-1 tvg-id="series-1-2" group-title="Accion",Serie Demo S01E02 - Continuacion
+https://cdn.example/series/s01e02/master.m3u8
+M3U);
+            }
+            if (str_contains($url, '/search/tv')) {
+                return Http::response(['results' => [[
+                    'id' => 456,
+                    'name' => 'Serie TMDB',
+                    'first_air_date' => '2024-01-01',
+                    'popularity' => 10,
+                ]]]);
+            }
+            if (str_contains($url, '/tv/456/season/1')) {
+                return Http::response(['episodes' => [
+                    ['episode_number' => 1, 'name' => 'Piloto TMDB', 'air_date' => '2024-01-01'],
+                ]]);
+            }
+            if (str_contains($url, '/tv/456')) {
+                return Http::response([
+                    'id' => 456,
+                    'name' => 'Serie TMDB',
+                    'overview' => 'Descripción TMDB.',
+                    'poster_path' => '/serie.jpg',
+                    'first_air_date' => '2024-01-01',
+                    'vote_average' => 8.4,
+                    'genres' => [['name' => 'Drama']],
+                    'seasons' => [['season_number' => 1]],
+                    'external_ids' => ['imdb_id' => 'tt4564564'],
+                ]);
+            }
+
+            return Http::response([], 404);
+        });
+
+        $this->withToken($token)->putJson('/api/v1/admin/iptv-vod-playlists', [
+            'playlists' => [[
+                'id' => 'vod-series',
+                'name' => 'VOD series',
+                'url' => 'https://streams.example/vod-series.m3u',
+                'content_type' => 'auto',
+                'enabled' => true,
+                'priority' => 1,
+            ]],
+        ])->assertOk();
+
+        $this->withToken($token)->postJson('/api/v1/admin/iptv-vod-playlists/sync')
+            ->assertOk()
+            ->assertJsonPath('data.series', 1)
+            ->assertJsonPath('data.episodes', 2);
+
+        $series = Title::query()->where('external_id', 'like', 'iptv-vod:%')->firstOrFail();
+        $this->assertSame('Serie TMDB', $series->title);
+        $this->assertSame('Descripción TMDB.', $series->description);
+        $this->assertSame('2024', $series->year);
+        $this->assertSame('8.4', $series->rating);
+        $this->assertSame(456, $series->tmdb_id);
+        $this->assertSame('https://image.tmdb.org/t/p/w500/serie.jpg', $series->poster);
+        $this->assertContains('Drama', $series->genres);
+        $this->assertSame('https://www.themoviedb.org/tv/456', $series->metadata['tmdb_url']);
+        Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/search/tv'));
     }
 
     public function test_admin_update_refreshes_live_and_vod_iptv_resources(): void

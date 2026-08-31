@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Support\UrlSafety;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -16,8 +17,8 @@ class TitleResource extends JsonResource
             'type' => $this->type,
             'title' => $this->title,
             'description' => $this->description,
-            'poster' => $this->poster,
-            'gallery' => $this->gallery ?? [],
+            'poster' => UrlSafety::http($this->poster),
+            'gallery' => UrlSafety::httpList($this->gallery ?? []),
             'rating' => $this->rating,
             'year' => $this->year,
             'quality' => $this->quality,

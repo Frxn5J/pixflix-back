@@ -97,6 +97,7 @@ class IptvVodSyncService
                 $metadata = $this->tmdb->apply($metadata, $tmdbMetadata);
                 $enriched = $tmdbMetadata === null ? [] : [
                     'tmdb_id' => $tmdbMetadata['tmdb_id'] ?? null,
+                    'imdb_id' => $tmdbMetadata['metadata']['imdb_id'] ?? null,
                     'metadata' => $tmdbMetadata['metadata'] ?? [],
                 ];
                 $title = Title::query()->updateOrCreate(
@@ -132,23 +133,38 @@ class IptvVodSyncService
             foreach ($series as $seriesKey => $seriesData) {
                 $identity = 'series|'.$seriesData['playlist_id'].'|'.$seriesKey;
                 $seasons = collect($seriesData['episodes'])->groupBy('season');
+                $seriesMetadata = [
+                    'title' => $seriesData['name'],
+                    'description' => 'Serie VOD importada desde '.$seriesData['playlist_name'].'.',
+                    'poster' => $seriesData['poster'],
+                    'languages' => $seriesData['languages'],
+                    'genres' => $seriesData['genres'],
+                ];
+                $tmdbMetadata = $this->tmdb->findSeries((string) $seriesData['name']);
+                $seriesMetadata = $this->tmdb->apply($seriesMetadata, $tmdbMetadata);
+                $enriched = $tmdbMetadata === null ? [] : [
+                    'tmdb_id' => $tmdbMetadata['tmdb_id'] ?? null,
+                    'imdb_id' => $tmdbMetadata['metadata']['imdb_id'] ?? null,
+                    'metadata' => $tmdbMetadata['metadata'] ?? [],
+                ];
                 $title = Title::query()->updateOrCreate(
                     ['external_id' => 'iptv-vod:'.sha1($identity)],
                     [
+                        ...$enriched,
                         'source' => 'iptv_vod',
                         'source_playlist_id' => $seriesData['playlist_id'],
                         'is_active' => true,
                         'slug' => $this->slug($seriesData['name'], $identity),
                         'type' => 'tvshow',
-                        'title' => $seriesData['name'],
-                        'description' => 'Serie VOD importada desde '.$seriesData['playlist_name'].'.',
-                        'poster' => $seriesData['poster'],
-                        'gallery' => [],
-                        'rating' => null,
-                        'year' => null,
+                        'title' => $seriesMetadata['title'] ?? $seriesData['name'],
+                        'description' => $seriesMetadata['description'] ?? 'Serie VOD importada desde '.$seriesData['playlist_name'].'.',
+                        'poster' => $seriesMetadata['poster'] ?? $seriesData['poster'],
+                        'gallery' => $seriesMetadata['gallery'] ?? [],
+                        'rating' => $seriesMetadata['rating'] ?? null,
+                        'year' => $seriesMetadata['year'] ?? null,
                         'quality' => $this->seriesQuality($seriesData['episodes']),
-                        'languages' => array_values(array_unique($seriesData['languages'])),
-                        'genres' => array_values(array_unique(array_filter($seriesData['genres']))),
+                        'languages' => array_values(array_unique(array_filter($seriesMetadata['languages'] ?? $seriesData['languages']))),
+                        'genres' => array_values(array_unique(array_filter($seriesMetadata['genres'] ?? $seriesData['genres']))),
                         'category' => 'normal',
                         'total_seasons' => $seasons->count(),
                         'total_episodes' => count($seriesData['episodes']),

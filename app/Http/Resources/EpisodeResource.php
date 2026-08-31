@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Support\UrlSafety;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -13,7 +14,7 @@ class EpisodeResource extends JsonResource
             'id' => $this->id,
             'number' => $this->number,
             'title' => $this->title,
-            'image' => $this->image,
+            'image' => UrlSafety::http($this->image),
             'release_date' => $this->release_date,
         ];
     }

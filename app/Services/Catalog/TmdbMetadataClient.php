@@ -261,10 +261,6 @@ class TmdbMetadataClient
             }
         }
 
-        if ($videos === []) {
-            return null;
-        }
-
         $firstAirDate = (string) ($payload['first_air_date'] ?? '');
         $tmdbId = (int) $payload['id'];
         $episodeRuntime = is_array($payload['episode_run_time'] ?? null)

@@ -7,6 +7,7 @@ use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\Title;
 use App\Models\User;
+use App\Services\Catalog\CatalogNormalizer;
 use App\Services\Catalog\CatalogSyncService;
 use App\Services\Catalog\PrincipalCatalogClient;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -103,6 +104,16 @@ class CatalogSyncTest extends TestCase
         } finally {
             $lock->release();
         }
+    }
+
+    public function test_catalog_normalizer_discards_local_image_urls(): void
+    {
+        $normalized = app(CatalogNormalizer::class)->titleItem([
+            'title' => 'Imagen local',
+            'image' => 'file:///C:/poster.jpg',
+        ]);
+
+        $this->assertNull($normalized['poster']);
     }
 
     public function test_client_uses_fallback_when_primary_is_unavailable(): void

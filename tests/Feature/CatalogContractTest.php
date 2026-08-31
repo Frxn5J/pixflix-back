@@ -64,6 +64,23 @@ class CatalogContractTest extends TestCase
             ->assertOk()->assertJsonPath('meta.total', 1)->assertJsonPath('data.0.slug', 'aurora-cero');
     }
 
+    public function test_catalog_does_not_expose_local_file_urls_as_images(): void
+    {
+        $token = $this->subscriberToken();
+        Title::factory()->create([
+            'slug' => 'imagen-insegura',
+            'title' => 'Imagen insegura',
+            'poster' => 'file:///C:/poster.jpg',
+            'gallery' => ['file:///C:/backdrop.jpg', 'https://cdn.test/backdrop.jpg'],
+        ]);
+
+        $this->withToken($token)
+            ->getJson('/api/v1/catalog?q=imagen-insegura')
+            ->assertOk()
+            ->assertJsonPath('data.0.poster', null)
+            ->assertJsonPath('data.0.gallery.0', 'https://cdn.test/backdrop.jpg');
+    }
+
     public function test_catalog_combines_successful_and_partial_snapshots(): void
     {
         $token = $this->subscriberToken();

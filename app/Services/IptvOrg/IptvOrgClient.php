@@ -2,6 +2,7 @@
 
 namespace App\Services\IptvOrg;
 
+use App\Support\UrlSafety;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -151,7 +152,7 @@ class IptvOrgClient
 
     private function validUrl(?string $value): ?string
     {
-        return is_string($value) && filter_var($value, FILTER_VALIDATE_URL) ? $value : null;
+        return UrlSafety::http($value);
     }
 
     private function slug(string $name, string $source): string
