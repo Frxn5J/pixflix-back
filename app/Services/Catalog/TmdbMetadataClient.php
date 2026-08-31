@@ -45,6 +45,39 @@ class TmdbMetadataClient
         });
     }
 
+    /** @return array<string, mixed>|null */
+    public function findSeries(string $title, ?string $year = null, ?string $imdbId = null): ?array
+    {
+        $title = trim($title);
+        $imdbId = trim((string) $imdbId);
+        if ($title === '' && $imdbId === '') {
+            return null;
+        }
+
+        if (! $this->configured()) {
+            return null;
+        }
+
+        $cacheKey = 'pixflix:tmdb:series:'.sha1(($imdbId !== '' ? $imdbId : $title).'|'.(string) $year);
+
+        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($title, $year, $imdbId): ?array {
+            try {
+                $seriesId = $imdbId !== '' ? $this->searchSeriesByImdbId($imdbId) : null;
+                $seriesId ??= $this->searchSeriesId($title, $year);
+
+                return $seriesId === null ? null : $this->seriesDetails($seriesId);
+            } catch (Throwable $error) {
+                Log::warning('TMDB series metadata request failed', [
+                    'title' => $title,
+                    'imdb_id' => $imdbId !== '' ? $imdbId : null,
+                    'error' => $error->getMessage(),
+                ]);
+
+                return null;
+            }
+        });
+    }
+
     /** @param array<string, mixed> $attributes */
     /** @return array<string, mixed> */
     public function apply(array $attributes, ?array $metadata): array
@@ -123,6 +156,146 @@ class TmdbMetadataClient
         return is_numeric($id) ? (int) $id : null;
     }
 
+    private function searchSeriesByImdbId(string $imdbId): ?int
+    {
+        $response = $this->request()->get($this->endpoint('/find/'.rawurlencode($imdbId)), [
+            ...$this->authQuery(),
+            'external_source' => 'imdb_id',
+            'language' => (string) config('pixflix.tmdb.language', 'es-MX'),
+        ]);
+        if (! $response->successful()) {
+            return null;
+        }
+
+        $results = array_values(array_filter($response->json('tv_results', []), 'is_array'));
+        $id = $results[0]['id'] ?? null;
+
+        return is_numeric($id) ? (int) $id : null;
+    }
+
+    private function searchSeriesId(string $title, ?string $year): ?int
+    {
+        $query = [
+            ...$this->authQuery(),
+            'query' => $title,
+            'language' => (string) config('pixflix.tmdb.language', 'es-MX'),
+            'include_adult' => 'false',
+            'page' => 1,
+        ];
+        if ($year !== null && preg_match('/^\d{4}$/', $year) === 1) {
+            $query['first_air_date_year'] = $year;
+        }
+
+        $response = $this->request()->get($this->endpoint('/search/tv'), $query);
+        if (! $response->successful()) {
+            return null;
+        }
+
+        $results = array_values(array_filter($response->json('results', []), 'is_array'));
+        if ($results === []) {
+            return null;
+        }
+
+        usort($results, function (array $left, array $right) use ($title, $year): int {
+            return $this->seriesScore($right, $title, $year) <=> $this->seriesScore($left, $title, $year);
+        });
+
+        $id = $results[0]['id'] ?? null;
+
+        return is_numeric($id) ? (int) $id : null;
+    }
+
+    /** @return array<string, mixed>|null */
+    private function seriesDetails(int $seriesId): ?array
+    {
+        $response = $this->request()->get($this->endpoint('/tv/'.$seriesId), [
+            ...$this->authQuery(),
+            'language' => (string) config('pixflix.tmdb.language', 'es-MX'),
+            'append_to_response' => 'external_ids',
+        ]);
+        if (! $response->successful()) {
+            return null;
+        }
+
+        $payload = $response->json();
+        if (! is_array($payload) || ! isset($payload['id'])) {
+            return null;
+        }
+
+        $videos = [];
+        foreach ((array) ($payload['seasons'] ?? []) as $season) {
+            if (! is_array($season)) {
+                continue;
+            }
+
+            $seasonNumber = (int) ($season['season_number'] ?? 0);
+            if ($seasonNumber < 1) {
+                continue;
+            }
+
+            $seasonResponse = $this->request()->get($this->endpoint('/tv/'.$seriesId.'/season/'.$seasonNumber), [
+                ...$this->authQuery(),
+                'language' => (string) config('pixflix.tmdb.language', 'es-MX'),
+            ]);
+            if (! $seasonResponse->successful()) {
+                continue;
+            }
+
+            foreach ((array) $seasonResponse->json('episodes', []) as $episode) {
+                if (! is_array($episode)) {
+                    continue;
+                }
+
+                $episodeNumber = (int) ($episode['episode_number'] ?? 0);
+                if ($episodeNumber < 1) {
+                    continue;
+                }
+
+                $videos[] = [
+                    'season' => $seasonNumber,
+                    'episode' => $episodeNumber,
+                    'title' => $this->usable($episode['name'] ?? null) ?? 'Episodio '.$episodeNumber,
+                    'image' => $this->imageUrl($episode['still_path'] ?? null, 'w300'),
+                    'release_date' => $this->usable($episode['air_date'] ?? null),
+                ];
+            }
+        }
+
+        if ($videos === []) {
+            return null;
+        }
+
+        $firstAirDate = (string) ($payload['first_air_date'] ?? '');
+        $tmdbId = (int) $payload['id'];
+        $episodeRuntime = is_array($payload['episode_run_time'] ?? null)
+            ? ($payload['episode_run_time'][0] ?? null)
+            : null;
+        $runtime = is_numeric($episodeRuntime) ? ((int) $episodeRuntime).' min' : null;
+
+        return [
+            'title' => $this->usable($payload['name'] ?? $payload['original_name'] ?? null),
+            'description' => $this->usable($payload['overview'] ?? null),
+            'poster' => $this->imageUrl($payload['poster_path'] ?? null, 'w500'),
+            'backdrop' => $this->imageUrl($payload['backdrop_path'] ?? null, 'w1280'),
+            'rating' => isset($payload['vote_average']) ? (string) round((float) $payload['vote_average'], 1) : null,
+            'year' => preg_match('/^(\d{4})/', $firstAirDate, $yearMatch) === 1 ? $yearMatch[1] : null,
+            'tmdb_id' => $tmdbId,
+            'languages' => [],
+            'genres' => array_values(array_filter(array_map(
+                fn (mixed $genre): string => is_array($genre) ? trim((string) ($genre['name'] ?? '')) : '',
+                (array) ($payload['genres'] ?? []),
+            ))),
+            'metadata' => [
+                'tmdb_url' => 'https://www.themoviedb.org/tv/'.$tmdbId,
+                'imdb_id' => $payload['external_ids']['imdb_id'] ?? null,
+                'status' => $payload['status'] ?? null,
+                'released' => $firstAirDate !== '' ? $firstAirDate : null,
+                'runtime' => $runtime,
+            ],
+            'videos' => $videos,
+        ];
+    }
+
     /** @return array<string, mixed>|null */
     private function details(int $movieId): ?array
     {
@@ -187,7 +360,7 @@ class TmdbMetadataClient
         $request = Http::withOptions([
             'verify' => (bool) config('pixflix.tmdb.verify_ssl', true),
         ])->timeout((int) config('pixflix.tmdb.timeout_seconds', 8))->acceptJson();
-        $token = trim((string) config('pixflix.tmdb.access_token', ''));
+        $token = $this->accessToken();
 
         return $token === '' ? $request : $request->withToken($token);
     }
@@ -197,9 +370,24 @@ class TmdbMetadataClient
     {
         $apiKey = trim((string) config('pixflix.tmdb.api_key', ''));
 
-        return $apiKey === '' || trim((string) config('pixflix.tmdb.access_token', '')) !== ''
+        return $apiKey === '' || $this->accessToken() !== ''
             ? []
             : ['api_key' => $apiKey];
+    }
+
+    private function accessToken(): string
+    {
+        $accessToken = trim((string) config('pixflix.tmdb.access_token', ''));
+        if ($accessToken !== '') {
+            return $accessToken;
+        }
+
+        // TMDB v4 tokens are JWTs. Accepting one in the legacy API-key
+        // setting keeps existing installations working while using the
+        // correct Bearer authentication scheme.
+        $apiKey = trim((string) config('pixflix.tmdb.api_key', ''));
+
+        return preg_match('/^[^.]+\.[^.]+\.[^.]+$/', $apiKey) === 1 ? $apiKey : '';
     }
 
     private function endpoint(string $path): string
@@ -214,6 +402,19 @@ class TmdbMetadataClient
             $score += 100;
         }
         if ($year !== null && str_starts_with((string) ($movie['release_date'] ?? ''), $year)) {
+            $score += 50;
+        }
+
+        return $score;
+    }
+
+    private function seriesScore(array $series, string $title, ?string $year): float
+    {
+        $score = (float) ($series['popularity'] ?? 0) / 1000;
+        if ($this->sameTitle($series['name'] ?? $series['original_name'] ?? '', $title)) {
+            $score += 100;
+        }
+        if ($year !== null && str_starts_with((string) ($series['first_air_date'] ?? ''), $year)) {
             $score += 50;
         }
 

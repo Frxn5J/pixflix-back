@@ -98,4 +98,21 @@ class TmdbMetadataTest extends TestCase
                 && ! str_contains($request->url(), 'api_key=');
         });
     }
+
+    public function test_tmdb_v4_token_in_api_key_setting_is_sent_as_bearer_authentication(): void
+    {
+        config()->set('pixflix.tmdb.api_key', 'header.payload.signature');
+        config()->set('pixflix.tmdb.access_token', '');
+        config()->set('pixflix.tmdb.base_url', 'https://tmdb.test/3');
+        Http::fake([
+            'https://tmdb.test/*' => Http::response(['results' => []]),
+        ]);
+
+        app(TmdbMetadataClient::class)->find('Película Token v4', '2024');
+
+        Http::assertSent(function (Request $request): bool {
+            return $request->hasHeader('Authorization', 'Bearer header.payload.signature')
+                && ! str_contains($request->url(), 'api_key=');
+        });
+    }
 }

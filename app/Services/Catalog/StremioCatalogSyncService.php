@@ -18,7 +18,10 @@ class StremioCatalogSyncService
 {
     private const PAGE_SIZE = 100;
 
-    public function __construct(private readonly SyncSettings $settings) {}
+    public function __construct(
+        private readonly SyncSettings $settings,
+        private readonly TmdbMetadataClient $tmdb,
+    ) {}
 
     /**
      * Import the active Stremio catalogs on the first catalog request. The
@@ -145,29 +148,67 @@ class StremioCatalogSyncService
                 continue;
             }
 
-            DB::transaction(function () use ($title, $meta, $videos, $addon, $raw): void {
-                $title->update([
-                    'description' => $this->stringValue($meta, ['description']) ?? $title->description,
-                    'poster' => $this->urlValue($meta['poster'] ?? null) ?? $title->poster,
-                    'gallery' => $this->gallery($meta, $title->gallery ?? []),
-                    'rating' => $this->stringValue($meta, ['imdbRating', 'rating']) ?? $title->rating,
-                    'year' => $this->year($meta) ?? $title->year,
-                    'genres' => $this->stringList($meta['genres'] ?? null) ?: ($title->genres ?? []),
-                    'languages' => $this->stringList($meta['language'] ?? $meta['languages'] ?? null) ?: ($title->languages ?? []),
-                    'total_seasons' => count(array_unique(array_filter(array_map(
-                        fn (array $video): int => (int) ($video['season'] ?? 0),
-                        array_filter($videos, 'is_array'),
-                    )))) ?: $title->total_seasons,
-                    'total_episodes' => count($videos),
-                    'raw_extract' => [...$raw, 'detail_synced_at' => now()->toIso8601String()],
-                ]);
-                $this->syncVideos($title, $videos, $addon['id']);
-            });
-
-            Cache::forever('pixflix:catalog-stamp', (string) now()->unix());
+            $this->persistHydratedTitle($title, $meta, $videos, $addon['id'], $raw);
 
             return;
         }
+
+        // Addon Latam publishes the series stream endpoint but returns no
+        // metadata for some titles. TMDB supplies the season and episode
+        // index while playback remains resolved by the Stremio addon.
+        $imdbId = preg_match('/^tt\d+$/i', $contentId) === 1
+            ? $contentId
+            : ($title->imdb_id ?? $raw['imdb_id'] ?? $raw['imdbId'] ?? null);
+        $tmdbMeta = $this->tmdb->findSeries($title->title, $title->year, is_string($imdbId) ? $imdbId : null);
+        $tmdbVideos = is_array($tmdbMeta['videos'] ?? null) ? $tmdbMeta['videos'] : [];
+
+        if ($tmdbMeta === null || $tmdbVideos === []) {
+            return;
+        }
+
+        $this->persistHydratedTitle(
+            $title,
+            $tmdbMeta,
+            $tmdbVideos,
+            (string) ($title->source_playlist_id ?: 'stremio'),
+            $raw,
+        );
+    }
+
+    /** @param array<string, mixed> $meta */
+    /** @param array<int, mixed> $videos */
+    /** @param array<string, mixed> $raw */
+    private function persistHydratedTitle(
+        Title $title,
+        array $meta,
+        array $videos,
+        string $sourcePlaylistId,
+        array $raw,
+    ): void {
+        DB::transaction(function () use ($title, $meta, $videos, $sourcePlaylistId, $raw): void {
+            $metadata = is_array($meta['metadata'] ?? null) ? $meta['metadata'] : [];
+            $title->update([
+                'description' => $this->stringValue($meta, ['description']) ?? $title->description,
+                'poster' => $this->urlValue($meta['poster'] ?? null) ?? $title->poster,
+                'gallery' => $this->gallery($meta, $title->gallery ?? []),
+                'rating' => $this->stringValue($meta, ['imdbRating', 'rating']) ?? $title->rating,
+                'year' => $this->year($meta) ?? $title->year,
+                'tmdb_id' => is_numeric($meta['tmdb_id'] ?? null) ? (int) $meta['tmdb_id'] : $title->tmdb_id,
+                'imdb_id' => $this->stringValue($metadata, ['imdb_id']) ?? $title->imdb_id,
+                'metadata' => [...($title->metadata ?? []), ...$metadata],
+                'genres' => $this->stringList($meta['genres'] ?? null) ?: ($title->genres ?? []),
+                'languages' => $this->stringList($meta['language'] ?? $meta['languages'] ?? null) ?: ($title->languages ?? []),
+                'total_seasons' => count(array_unique(array_filter(array_map(
+                    fn (array $video): int => (int) ($video['season'] ?? 0),
+                    array_filter($videos, 'is_array'),
+                )))) ?: $title->total_seasons,
+                'total_episodes' => count($videos),
+                'raw_extract' => [...$raw, 'detail_synced_at' => now()->toIso8601String()],
+            ]);
+            $this->syncVideos($title, $videos, $sourcePlaylistId);
+        });
+
+        Cache::forever('pixflix:catalog-stamp', (string) now()->unix());
     }
 
     /** @return array<string, mixed> */

@@ -110,6 +110,87 @@ class StremioCatalogSyncTest extends TestCase
         $this->assertTrue(Season::query()->where('title_id', $title->id)->exists());
     }
 
+    public function test_series_detail_falls_back_to_tmdb_when_addon_has_no_meta(): void
+    {
+        config()->set('pixflix.tmdb.api_key', '');
+        config()->set('pixflix.tmdb.access_token', 'tmdb-token');
+        config()->set('pixflix.tmdb.base_url', 'https://tmdb.test/3');
+
+        $title = Title::factory()->create([
+            'source' => 'stremio',
+            'external_id' => 'stremio:series:tt37532893',
+            'slug' => 'black-torch',
+            'type' => 'tvshow',
+            'title' => 'BLACK TORCH',
+            'imdb_id' => 'tt37532893',
+            'raw_extract' => [
+                'source' => 'stremio',
+                'stremio_id' => 'tt37532893',
+                'stremio_type' => 'series',
+                'addon_id' => 'catalog-addon',
+            ],
+        ]);
+        $token = $this->subscriberToken();
+
+        Http::fake(function (Request $request) {
+            $url = $request->url();
+            if (str_contains($url, '/meta/series/tt37532893.json')) {
+                return Http::response(['meta' => null], 200);
+            }
+            if (str_contains($url, '/find/tt37532893')) {
+                return Http::response(['tv_results' => [['id' => 999]]], 200);
+            }
+            if (str_contains($url, '/tv/999/season/1')) {
+                return Http::response(['episodes' => [
+                    [
+                        'episode_number' => 1,
+                        'name' => 'El comienzo',
+                        'air_date' => '2025-01-10',
+                        'still_path' => '/still.jpg',
+                    ],
+                    [
+                        'episode_number' => 2,
+                        'name' => 'La misión',
+                        'air_date' => '2025-01-17',
+                        'still_path' => null,
+                    ],
+                ]], 200);
+            }
+            if (str_contains($url, '/tv/999')) {
+                return Http::response([
+                    'id' => 999,
+                    'name' => 'BLACK TORCH',
+                    'overview' => 'Serie TMDB',
+                    'poster_path' => '/poster.jpg',
+                    'backdrop_path' => '/backdrop.jpg',
+                    'first_air_date' => '2025-01-01',
+                    'vote_average' => 8.2,
+                    'genres' => [['name' => 'Acción']],
+                    'external_ids' => ['imdb_id' => 'tt37532893'],
+                    'seasons' => [['season_number' => 1]],
+                    'episode_run_time' => [24],
+                ], 200);
+            }
+
+            return Http::response([], 404);
+        });
+
+        $response = $this->withToken($token)->getJson('/api/v1/titles/'.$title->slug);
+
+        $response->assertOk()
+            ->assertJsonPath('data.total_seasons', 1)
+            ->assertJsonPath('data.total_episodes', 2)
+            ->assertJsonPath('data.seasons.0.number', 1)
+            ->assertJsonPath('data.seasons.0.episodes.1.title', 'La misión');
+        $this->assertDatabaseHas('episodes', [
+            'source' => 'stremio',
+            'number' => 1,
+            'title' => 'El comienzo',
+        ]);
+        Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/find/tt37532893'));
+        Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/tv/999/season/1'));
+    }
+
     public function test_admin_can_force_stremio_catalog_import(): void
     {
         $this->fakeCatalogAddon();
