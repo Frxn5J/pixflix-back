@@ -14,11 +14,15 @@ class RefreshSanctumToken
         $accessToken = $request->user()?->currentAccessToken();
 
         if ($accessToken instanceof PersonalAccessToken) {
-            $accessToken->forceFill([
-                'expires_at' => now()->addMinutes(
-                    (int) config('pixflix.auth_token_lifetime_minutes', 43200)
-                ),
-            ])->save();
+            $now = now();
+            $threshold = $now->copy()->addDays(7);
+            if ($accessToken->expires_at === null || $accessToken->expires_at->lte($threshold)) {
+                $accessToken->forceFill([
+                    'expires_at' => $now->addMinutes(
+                        (int) config('pixflix.auth_token_lifetime_minutes', 43200)
+                    ),
+                ])->saveQuietly();
+            }
         }
 
         return $next($request);

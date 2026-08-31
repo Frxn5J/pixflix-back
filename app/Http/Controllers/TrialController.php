@@ -61,7 +61,13 @@ class TrialController extends Controller
     {
         do {
             $username = 'trial_'.Str::lower(Str::random(8));
-        } while (User::query()->where('username', $username)->exists());
+        } while (User::query()
+            ->where(function ($query) use ($username): void {
+                $query->where('email', $username)
+                    ->orWhere('phone', $username)
+                    ->orWhere('username', $username);
+            })
+            ->exists());
 
         return $username;
     }

@@ -29,11 +29,14 @@ Route::prefix('v1')->group(function () {
 
     Route::prefix('auth')->group(function () {
         Route::post('/login', [AuthController::class, 'login'])
-            ->middleware('throttle:20,1')
+            ->middleware('throttle:login')
             ->name('api.v1.auth.login');
         Route::post('/logout', [AuthController::class, 'logout'])
             ->middleware(['auth:sanctum', 'auth.refresh'])
             ->name('api.v1.auth.logout');
+        Route::post('/logout-all', [AuthController::class, 'logoutAll'])
+            ->middleware(['auth:sanctum', 'auth.refresh'])
+            ->name('api.v1.auth.logout-all');
     });
 
     Route::post('/trials', [TrialController::class, 'store'])

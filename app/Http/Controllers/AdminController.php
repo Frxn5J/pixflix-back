@@ -81,6 +81,7 @@ class AdminController extends Controller
             'role' => ['sometimes', Rule::in(['admin', 'agent', 'subscriber'])],
             'password' => ['sometimes', 'nullable', 'string', 'min:8', 'max:120'],
         ]);
+        $this->assertIdentityFieldsAvailable($validated, $user);
 
         if (array_key_exists('password', $validated) && $validated['password'] === null) {
             unset($validated['password']);
@@ -89,6 +90,49 @@ class AdminController extends Controller
         $user->update($validated);
 
         return response()->json(['data' => $this->userData($user->refresh()->load(['subscriptions' => fn ($query) => $query->latest('id')->with('plan')]))]);
+    }
+
+    private function assertIdentityFieldsAvailable(array $validated, User $user): void
+    {
+        $identityFields = ['email', 'phone', 'username'];
+        if (array_intersect($identityFields, array_keys($validated)) === []) {
+            return;
+        }
+
+        $values = [];
+
+        foreach ($identityFields as $field) {
+            $value = array_key_exists($field, $validated) ? $validated[$field] : $user->{$field};
+
+            if ($value === null || $value === '') {
+                continue;
+            }
+
+            $value = (string) $value;
+
+            if (isset($values[$value])) {
+                throw ValidationException::withMessages([
+                    $field => ['El correo, telefono y usuario deben ser identificadores distintos.'],
+                ]);
+            }
+
+            $values[$value] = $field;
+
+            $inUse = User::query()
+                ->where('id', '<>', $user->id)
+                ->where(function ($query) use ($value): void {
+                    $query->where('email', $value)
+                        ->orWhere('phone', $value)
+                        ->orWhere('username', $value);
+                })
+                ->exists();
+
+            if ($inUse) {
+                throw ValidationException::withMessages([
+                    $field => ['El identificador ya esta en uso por otra cuenta.'],
+                ]);
+            }
+        }
     }
 
     public function subscriptions(Request $request): JsonResponse

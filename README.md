@@ -115,15 +115,19 @@ SANCTUM_STATEFUL_DOMAINS=app.ejemplo.com
 POSTGRES_PASSWORD=CLAVE_LARGA_POSTGRES
 DRAGONFLY_PASSWORD=CLAVE_LARGA_DRAGONFLY
 SESSION_LIFETIME=43200
+PIXFLIX_AUTH_TOKEN_LIFETIME_MINUTES=43200
 ADMIN_EMAIL=admin@ejemplo.com
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=CLAVE_LARGA_ADMIN
 ```
 
-`SESSION_LIFETIME` se expresa en minutos. El valor `43200` equivale a 30 días:
-la cookie SPA y los tokens Bearer renuevan ese periodo después de cada request
-autenticado. No configures `SANCTUM_TOKEN_EXPIRATION`, ya que el vencimiento
-deslizante usa el `expires_at` explícito de cada token.
+`SESSION_LIFETIME` se expresa en minutos y controla la sesión web. El valor
+`43200` equivale a 30 días. `PIXFLIX_AUTH_TOKEN_LIFETIME_MINUTES` controla los
+tokens Bearer por separado y también usa 30 días por defecto. Un token solo se
+renueva cuando le quedan siete días o menos; así la actividad normal conserva la
+sesión, pero un token robado sin uso termina expirando. No configures
+`SANCTUM_TOKEN_EXPIRATION`, ya que el vencimiento usa el `expires_at` explícito
+de cada token.
 
 Las credenciales `ADMIN_*` se aplican al usuario administrador cuando se ejecuta
 `php artisan db:seed` o `php artisan migrate --seed`. La contraseña nunca se

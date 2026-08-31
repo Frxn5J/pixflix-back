@@ -6,23 +6,19 @@ use App\Exceptions\ApiException;
 use App\Http\Requests\LoginRequest;
 use App\Http\Requests\UpdatePasswordRequest;
 use App\Models\Profile;
-use App\Models\Subscription;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 
 class AuthController extends Controller
 {
     public function login(LoginRequest $request): JsonResponse
     {
         $login = $request->string('login')->toString();
-        $user = User::query()
-            ->where('email', $login)
-            ->orWhere('phone', $login)
-            ->orWhere('username', $login)
-            ->first();
+        $user = $this->findUserByLogin($login);
 
         if ($user === null || ! Hash::check($request->string('password')->toString(), $user->password)) {
             throw new ApiException(
@@ -34,11 +30,27 @@ class AuthController extends Controller
 
         $this->ensureAccountCanLogin($user);
 
-        $shouldLoginSession = $request->hasSession() && $request->headers->has('Origin');
+        $shouldLoginSession = $request->hasSession()
+            && EnsureFrontendRequestsAreStateful::fromFrontend($request);
 
         if ($shouldLoginSession) {
             Auth::guard('web')->login($user);
             $request->session()->regenerate();
+        }
+
+        $maxTokens = 5;
+        $tokenCount = $user->tokens()->count();
+
+        if ($tokenCount >= $maxTokens) {
+            $tokensToDelete = $user->tokens()
+                ->oldest('created_at')
+                ->oldest('id')
+                ->limit($tokenCount - $maxTokens + 1)
+                ->pluck('id');
+
+            if ($tokensToDelete->isNotEmpty()) {
+                $user->tokens()->whereIn('id', $tokensToDelete)->delete();
+            }
         }
 
         $token = $user->createToken(
@@ -63,6 +75,19 @@ class AuthController extends Controller
         if ($token !== null && method_exists($token, 'delete')) {
             $token->delete();
         }
+
+        if ($request->hasSession()) {
+            Auth::guard('web')->logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+        }
+
+        return response()->json(['data' => ['logged_out' => true]]);
+    }
+
+    public function logoutAll(Request $request): JsonResponse
+    {
+        $request->user()->tokens()->delete();
 
         if ($request->hasSession()) {
             Auth::guard('web')->logout();
@@ -126,6 +151,25 @@ class AuthController extends Controller
                 403,
             );
         }
+    }
+
+    private function findUserByLogin(string $login): ?User
+    {
+        $query = User::query();
+
+        if (filter_var($login, FILTER_VALIDATE_EMAIL)) {
+            $user = $query->where('email', $login)->first();
+        } elseif (preg_match('/^\+?[0-9]{7,15}$/', $login) === 1) {
+            $user = $query->where('phone', $login)->first();
+        } else {
+            $user = $query->where('username', $login)->first();
+        }
+
+        return $user ?? User::query()
+            ->where('email', $login)
+            ->orWhere('phone', $login)
+            ->orWhere('username', $login)
+            ->first();
     }
 
     private function accountData(User $user): array

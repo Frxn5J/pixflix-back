@@ -24,6 +24,19 @@ class RouteServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        RateLimiter::for('login', function (Request $request) {
+            $login = strtolower(trim((string) $request->input('login')));
+
+            return Limit::perMinute(5)
+                ->by($login.'|'.$request->ip())
+                ->response(fn () => response()->json([
+                    'error' => [
+                        'code' => 'rate_limited',
+                        'message' => 'Demasiados intentos. Espera un momento y vuelve a intentar.',
+                    ],
+                ], 429));
+        });
+
         // Guests (login, public endpoints) are capped tighter than
         // authenticated accounts: one NAT'd IP must not starve its users.
         RateLimiter::for('api', function (Request $request) {

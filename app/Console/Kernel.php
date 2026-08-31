@@ -13,6 +13,9 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
+        $schedule->command('sanctum:prune-expired --hours=24')
+            ->daily();
+
         $settings = app(SyncSettings::class);
         $schedule->command('pixflix:sync-catalog')
             ->dailyAt((string) $settings->get('sync.cron_hour', config('pixflix.sync.cron_hour', '04:00')))
