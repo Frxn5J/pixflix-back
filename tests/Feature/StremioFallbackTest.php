@@ -147,6 +147,103 @@ class StremioFallbackTest extends TestCase
         $this->assertStringContainsString('addon-two.test', $urls[1]);
     }
 
+    public function test_resolver_uses_the_title_imdb_id_when_raw_extract_has_none(): void
+    {
+        $title = Title::factory()->create([
+            'title' => 'Shrek 2',
+            'imdb_id' => 'tt0298148',
+            'raw_extract' => ['streams' => []],
+        ]);
+        $this->configureAddons();
+        Http::fake(function (Request $request) {
+            if (str_contains($request->url(), '/stream/movie/tt0298148.json')) {
+                return Http::response(['streams' => [[
+                    'url' => 'https://cdn.test/shrek-2.m3u8',
+                    'language' => 'Latino',
+                ]]], 200);
+            }
+
+            return Http::response(['streams' => []], 200);
+        });
+
+        $streams = app(StreamResolver::class)->titleStreams($title);
+
+        $this->assertSame('https://cdn.test/shrek-2.m3u8', $streams[0]['hls']);
+        Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/stream/movie/tt0298148.json'));
+    }
+
+    public function test_search_enabled_addon_resolves_titles_without_external_ids(): void
+    {
+        $title = Title::factory()->create([
+            'title' => 'Shrek 2',
+            'raw_extract' => ['streams' => []],
+        ]);
+        $this->configureAddons();
+        Http::fake(function (Request $request) {
+            $url = $request->url();
+            if (str_contains($url, 'addon-one.test') && str_ends_with($url, '/manifest.json')) {
+                return Http::response([
+                    'catalogs' => [[
+                        'type' => 'movie',
+                        'id' => 'search-movie',
+                        'extra' => [['name' => 'search', 'isRequired' => true]],
+                    ]],
+                ], 200);
+            }
+            if (str_contains($url, '/catalog/movie/search-movie/search=Shrek%202.json')) {
+                return Http::response(['metas' => [[
+                    'id' => 'tt0298148',
+                    'name' => 'Shrek 2',
+                ]]], 200);
+            }
+            if (str_contains($url, '/stream/movie/tt0298148.json')) {
+                return Http::response(['streams' => [[
+                    'url' => 'https://cdn.test/shrek-2.m3u8',
+                    'language' => 'Latino',
+                ]]], 200);
+            }
+
+            return Http::response(['streams' => []], 200);
+        });
+
+        $streams = app(StreamResolver::class)->titleStreams($title);
+
+        $this->assertSame('https://cdn.test/shrek-2.m3u8', $streams[0]['hls']);
+        Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/catalog/movie/search-movie/search=Shrek%202.json'));
+    }
+
+    public function test_addon_manifest_path_prefix_is_preserved_for_stream_requests(): void
+    {
+        $title = Title::factory()->create([
+            'title' => 'Shrek 2',
+            'imdb_id' => 'tt0298148',
+            'raw_extract' => ['streams' => []],
+        ]);
+        app(SyncSettings::class)->put('stremio.addons', [[
+            'id' => 'prefixed-addon',
+            'name' => 'Addon con prefijo',
+            'base_url' => 'https://addon-prefix.test/secret/manifest.json',
+            'enabled' => true,
+            'priority' => 1,
+            'timeout_seconds' => 2,
+        ]]);
+        Http::fake(function (Request $request) {
+            if (str_contains($request->url(), '/secret/stream/movie/tt0298148.json')) {
+                return Http::response(['streams' => [[
+                    'url' => 'https://cdn.test/shrek-2.m3u8',
+                    'language' => 'Latino',
+                ]]], 200);
+            }
+
+            return Http::response(['streams' => []], 200);
+        });
+
+        $streams = app(StreamResolver::class)->titleStreams($title);
+
+        $this->assertSame('https://cdn.test/shrek-2.m3u8', $streams[0]['hls']);
+        Http::assertSent(fn (Request $request): bool => str_contains($request->url(), 'https://addon-prefix.test/secret/stream/movie/tt0298148.json'));
+    }
+
     public function test_admin_can_save_ordered_stremio_fallback_configuration(): void
     {
         $admin = User::factory()->admin()->create();

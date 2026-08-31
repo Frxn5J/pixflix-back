@@ -15,7 +15,13 @@ class StremioResolver
 
     public function forTitle(Title $title, ?string $language = null): array
     {
-        return $this->resolve('movie', $this->contentIds($title), $language);
+        return $this->resolve(
+            'movie',
+            $this->contentIds($title),
+            $language,
+            $title->title,
+            $title->year,
+        );
     }
 
     public function forEpisode(Episode $episode, ?string $language = null): array
@@ -38,11 +44,16 @@ class StremioResolver
             $this->contentIds($title),
         );
 
-        return $this->resolve('series', $ids, $language);
+        return $this->resolve('series', $ids, $language, $title->title, $title->year);
     }
 
-    private function resolve(string $type, array $ids, ?string $requestedLanguage): array
-    {
+    private function resolve(
+        string $type,
+        array $ids,
+        ?string $requestedLanguage,
+        ?string $searchTitle = null,
+        ?string $searchYear = null,
+    ): array {
         if (! (bool) $this->settings->get('stremio.enabled', config('pixflix.stremio.enabled', false))) {
             return [];
         }
@@ -52,50 +63,193 @@ class StremioResolver
 
         foreach ($ids as $id) {
             foreach ($addons as $addon) {
-                $url = $this->streamUrl($addon['base_url'], $type, $id);
+                Log::debug('Stremio addon request', [
+                    'addon' => $addon['name'],
+                    'type' => $type,
+                    'content_id' => $id,
+                ]);
 
-                try {
-                    Log::debug('Stremio addon request', [
+                $normalized = $this->requestStreams($addon, $type, $id, $languages);
+
+                if ($normalized !== []) {
+                    Log::info('Stremio addon selected', [
                         'addon' => $addon['name'],
-                        'type' => $type,
-                        'content_id' => $id,
+                        'streams' => count($normalized),
                     ]);
 
-                    $response = Http::acceptJson()
-                        ->timeout($this->timeout($addon))
-                        ->get($url);
+                    return $normalized;
+                }
+            }
+        }
 
-                    if (! $response->successful()) {
-                        Log::notice('Stremio addon unavailable', [
-                            'addon' => $addon['name'],
-                            'status' => $response->status(),
-                        ]);
-
+        // Some catalogs (including the principal Pixflix catalog) do not keep
+        // an IMDb id on every title. Search-enabled Stremio addons can still
+        // resolve those titles to their canonical external id.
+        if ($searchTitle !== null && trim($searchTitle) !== '') {
+            foreach ($addons as $addon) {
+                foreach ($this->searchContentIds($addon, $type, $searchTitle, $searchYear) as $id) {
+                    if (in_array($id, $ids, true)) {
                         continue;
                     }
 
-                    $payload = $response->json();
-                    $streams = is_array($payload) ? ($payload['streams'] ?? []) : [];
-                    $normalized = $this->usableStreams($streams, $languages);
+                    $normalized = $this->requestStreams($addon, $type, $id, $languages);
 
                     if ($normalized !== []) {
-                        Log::info('Stremio addon selected', [
+                        Log::info('Stremio addon selected after catalog search', [
                             'addon' => $addon['name'],
+                            'content_id' => $id,
                             'streams' => count($normalized),
                         ]);
 
                         return $normalized;
                     }
-                } catch (Throwable $error) {
-                    Log::warning('Stremio addon failed', [
-                        'addon' => $addon['name'],
-                        'error' => $error->getMessage(),
-                    ]);
                 }
             }
         }
 
         return [];
+    }
+
+    private function requestStreams(array $addon, string $type, string $id, array $languages): array
+    {
+        $url = $this->streamUrl($addon['base_url'], $type, $id);
+
+        try {
+            $response = Http::acceptJson()
+                ->timeout($this->timeout($addon))
+                ->get($url);
+
+            if (! $response->successful()) {
+                Log::notice('Stremio addon unavailable', [
+                    'addon' => $addon['name'],
+                    'status' => $response->status(),
+                    'content_id' => $id,
+                ]);
+
+                return [];
+            }
+
+            $payload = $response->json();
+            $streams = is_array($payload) ? ($payload['streams'] ?? []) : [];
+
+            return $this->usableStreams($streams, $languages);
+        } catch (Throwable $error) {
+            Log::warning('Stremio addon failed', [
+                'addon' => $addon['name'],
+                'content_id' => $id,
+                'error' => $error->getMessage(),
+            ]);
+
+            return [];
+        }
+    }
+
+    /** @return array<int, string> */
+    private function searchContentIds(array $addon, string $type, string $title, ?string $year): array
+    {
+        try {
+            $manifestResponse = Http::acceptJson()
+                ->timeout($this->timeout($addon))
+                ->get($this->manifestUrl($addon['base_url']));
+
+            if (! $manifestResponse->successful()) {
+                return [];
+            }
+
+            $manifest = $manifestResponse->json();
+            $catalogs = is_array($manifest) && is_array($manifest['catalogs'] ?? null)
+                ? $manifest['catalogs']
+                : [];
+
+            foreach ($catalogs as $catalog) {
+                if (! is_array($catalog) || $this->contentType((string) ($catalog['type'] ?? '')) !== $type) {
+                    continue;
+                }
+
+                $catalogId = trim((string) ($catalog['id'] ?? ''));
+                if ($catalogId === '' || ! $this->supportsSearch($catalog['extra'] ?? [])) {
+                    continue;
+                }
+
+                $response = Http::acceptJson()
+                    ->timeout($this->timeout($addon))
+                    ->get($this->catalogSearchUrl($addon['base_url'], $type, $catalogId, $title));
+
+                if (! $response->successful()) {
+                    continue;
+                }
+
+                $payload = $response->json();
+                $metas = is_array($payload) ? ($payload['metas'] ?? $payload['items'] ?? []) : [];
+                if (! is_array($metas)) {
+                    continue;
+                }
+
+                usort($metas, fn (mixed $left, mixed $right): int => $this->searchScore($right, $title, $year) <=> $this->searchScore($left, $title, $year));
+
+                $ids = collect($metas)
+                    ->filter(fn (mixed $meta): bool => is_array($meta))
+                    ->map(fn (array $meta): string => trim((string) ($meta['id'] ?? $meta['imdb_id'] ?? $meta['imdbId'] ?? '')))
+                    ->filter()
+                    ->unique()
+                    ->take(10)
+                    ->values()
+                    ->all();
+
+                if ($ids !== []) {
+                    return $ids;
+                }
+            }
+        } catch (Throwable $error) {
+            Log::notice('Stremio addon catalog search failed', [
+                'addon' => $addon['name'],
+                'title' => $title,
+                'error' => $error->getMessage(),
+            ]);
+        }
+
+        return [];
+    }
+
+    private function supportsSearch(mixed $extra): bool
+    {
+        if (! is_array($extra)) {
+            return false;
+        }
+
+        return collect($extra)->contains(fn (mixed $item): bool => is_string($item) && strtolower(trim($item)) === 'search'
+            || is_array($item) && strtolower(trim((string) ($item['name'] ?? ''))) === 'search');
+    }
+
+    private function searchScore(mixed $meta, string $title, ?string $year): int
+    {
+        if (! is_array($meta)) {
+            return 0;
+        }
+
+        $score = 0;
+        $candidate = $this->titleKey((string) ($meta['name'] ?? $meta['title'] ?? ''));
+        $wanted = $this->titleKey($title);
+
+        if ($candidate !== '' && $candidate === $wanted) {
+            $score += 100;
+        } elseif ($candidate !== '' && (str_contains($candidate, $wanted) || str_contains($wanted, $candidate))) {
+            $score += 30;
+        }
+
+        if ($year !== null && preg_match('/\b'.preg_quote($year, '/').'\b/', json_encode($meta) ?: '') === 1) {
+            $score += 10;
+        }
+
+        return $score;
+    }
+
+    private function titleKey(string $value): string
+    {
+        $value = strtolower(trim($value));
+        $value = strtr($value, ['á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ñ' => 'n']);
+
+        return preg_replace('/[^a-z0-9]+/', ' ', $value) ?: '';
     }
 
     private function addons(): array
@@ -131,6 +285,9 @@ class StremioResolver
             $raw['imdb'] ?? null,
             $raw['id'] ?? null,
             $raw['stremio_id'] ?? null,
+            $title->imdb_id,
+            is_array($title->metadata) ? ($title->metadata['imdb_id'] ?? null) : null,
+            is_array($title->metadata) ? ($title->metadata['imdbId'] ?? null) : null,
             $title->external_id,
             $title->slug,
         ];
@@ -354,6 +511,41 @@ class StremioResolver
         $path = preg_replace('#/manifest(?:\.json)?$#i', '', $path) ?? $path;
 
         return $this->composeUrl($parts, rtrim($path, '/').$suffix);
+    }
+
+    private function manifestUrl(string $baseUrl): string
+    {
+        $parts = parse_url(trim($baseUrl));
+        if (! is_array($parts) || ! isset($parts['scheme'], $parts['host'])) {
+            return rtrim(trim($baseUrl), '/').'/manifest.json';
+        }
+
+        $path = rtrim((string) ($parts['path'] ?? ''), '/').'/manifest.json';
+
+        return $this->composeUrl($parts, $path);
+    }
+
+    private function catalogSearchUrl(string $baseUrl, string $type, string $catalogId, string $title): string
+    {
+        $parts = parse_url(trim($baseUrl));
+        $suffix = '/catalog/'.rawurlencode($type).'/'.rawurlencode($catalogId).'/search='.rawurlencode($title).'.json';
+
+        if (! is_array($parts) || ! isset($parts['scheme'], $parts['host'])) {
+            return rtrim($baseUrl, '/').$suffix;
+        }
+
+        $path = rtrim((string) ($parts['path'] ?? ''), '/').$suffix;
+
+        return $this->composeUrl($parts, $path);
+    }
+
+    private function contentType(string $type): ?string
+    {
+        return match (strtolower(trim($type))) {
+            'movie' => 'movie',
+            'series', 'tvshow' => 'series',
+            default => null,
+        };
     }
 
     private function withoutManifest(string $url): string
