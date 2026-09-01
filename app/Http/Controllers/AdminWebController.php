@@ -63,6 +63,11 @@ class AdminWebController extends Controller
         return $this->forward('users', fn () => $this->admin->updateUser($request, $id), 'Usuario actualizado.');
     }
 
+    public function storeUser(Request $request): RedirectResponse
+    {
+        return $this->forward('users', fn () => $this->admin->storeUser($request), 'Suscriptor creado.');
+    }
+
     public function updateSubscription(Request $request, int $id): RedirectResponse
     {
         return $this->forward('subscriptions', fn () => $this->admin->updateSubscription($request, $id), 'Suscripcion actualizada.');

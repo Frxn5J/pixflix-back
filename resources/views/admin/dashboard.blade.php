@@ -83,6 +83,26 @@
         @empty <tr><td colspan="5" class="empty">No hay usuarios.</td></tr>@endforelse
         </tbody></table></div>
     </section>
+    <section class="panel">
+        <div class="panel-heading"><div><p class="eyebrow">NUEVA CUENTA</p><h2>Agregar suscriptor</h2><p class="muted">Crea las credenciales y activa su acceso en un solo paso.</p></div></div>
+        <form method="POST" action="{{ route('admin.users.store') }}">
+            @csrf
+            <div class="form-grid">
+                <div class="field"><label for="subscriber-name">Nombre</label><input id="subscriber-name" name="name" value="{{ old('name') }}" autocomplete="name" required></div>
+                <div class="field"><label for="subscriber-username">Usuario</label><input id="subscriber-username" name="username" value="{{ old('username') }}" pattern="[A-Za-z0-9_-]+" autocomplete="username" required><span class="hint">Letras, números, guion y guion bajo.</span></div>
+                <div class="field"><label for="subscriber-email">Correo (opcional)</label><input id="subscriber-email" name="email" type="email" value="{{ old('email') }}" autocomplete="email"></div>
+                <div class="field"><label for="subscriber-phone">Teléfono (opcional)</label><input id="subscriber-phone" name="phone" value="{{ old('phone') }}" autocomplete="tel"></div>
+                <div class="field"><label for="subscriber-password">Contraseña</label><input id="subscriber-password" name="password" type="password" minlength="8" autocomplete="new-password" required></div>
+                <div class="field"><label for="subscriber-password-confirmation">Repetir contraseña</label><input id="subscriber-password-confirmation" name="password_confirmation" type="password" minlength="8" autocomplete="new-password" required></div>
+                <div class="field"><label for="subscriber-plan">Plan</label><select id="subscriber-plan" name="plan_id"><option value="">Sin plan</option>@foreach ($plans as $plan)<option value="{{ $plan['id'] }}" @selected((string) old('plan_id') === (string) $plan['id'])>{{ $plan['name'] }} · {{ $plan['price'] }}</option>@endforeach</select></div>
+                <div class="field"><label for="subscriber-duration">Vigencia (días)</label><input id="subscriber-duration" name="duration_days" type="number" min="1" max="3650" value="{{ old('duration_days', 30) }}" required></div>
+                <div class="field"><label for="subscriber-group">Grupo</label><input id="subscriber-group" name="group_number" type="number" min="1" max="7" value="{{ old('group_number', 1) }}" required></div>
+                <div class="field"><label for="subscriber-price">Precio personalizado (opcional)</label><input id="subscriber-price" name="custom_price" type="number" min="0" max="999999.99" step="0.01" value="{{ old('custom_price') }}"></div>
+            </div>
+            <p class="hint" style="margin-top:12px">La cuenta se crea como suscriptor, con estado activo y acceso hasta completar la vigencia indicada.</p>
+            <div class="actions"><button class="button primary" type="submit">Crear suscriptor</button></div>
+        </form>
+    </section>
 @elseif ($section === 'subscriptions')
     <section class="panel"><div class="panel-heading"><div><p class="eyebrow">ACCESO</p><h2>Suscripciones</h2><p class="muted">Activa, suspende o modifica la vigencia de cada cuenta.</p></div></div>
     <div class="table-wrap"><table><thead><tr><th>Cuenta</th><th>Plan</th><th>Estado</th><th>Vigencia</th><th>Guardar</th></tr></thead><tbody>

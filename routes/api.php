@@ -50,6 +50,7 @@ Route::prefix('v1')->group(function () {
         Route::prefix('admin')->middleware('role:admin,agent')->group(function () {
             Route::get('/overview', [AdminController::class, 'overview'])->name('api.v1.admin.overview');
             Route::get('/users', [AdminController::class, 'users'])->name('api.v1.admin.users');
+            Route::post('/users', [AdminController::class, 'storeUser'])->name('api.v1.admin.users.store');
             Route::put('/users/{id}', [AdminController::class, 'updateUser'])->name('api.v1.admin.users.update');
             Route::get('/subscriptions', [AdminController::class, 'subscriptions'])->name('api.v1.admin.subscriptions');
             Route::put('/subscriptions/{id}', [AdminController::class, 'updateSubscription'])->name('api.v1.admin.subscriptions.update');

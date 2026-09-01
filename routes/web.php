@@ -32,6 +32,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'admin.web'])->group
     Route::get('/sync-status/{id}', [AdminWebController::class, 'syncStatus'])->name('sync-status');
     Route::post('/logout', [AdminWebAuthController::class, 'logout'])->name('logout');
 
+    Route::post('/users', [AdminWebController::class, 'storeUser'])->name('users.store');
     Route::put('/users/{id}', [AdminWebController::class, 'updateUser'])->name('users.update');
     Route::put('/subscriptions/{id}', [AdminWebController::class, 'updateSubscription'])->name('subscriptions.update');
     Route::post('/plans', [AdminWebController::class, 'storePlan'])->name('plans.store');

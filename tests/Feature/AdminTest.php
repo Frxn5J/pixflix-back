@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\Title;
 use App\Models\User;
@@ -13,6 +14,52 @@ use Tests\TestCase;
 class AdminTest extends TestCase
 {
     use DatabaseTransactions;
+
+    public function test_admin_can_create_a_subscriber_with_an_active_subscription(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $plan = Plan::factory()->create(['name' => 'Plan mensual']);
+        $token = $this->postJson('/api/v1/auth/login', [
+            'login' => $admin->email,
+            'password' => 'password',
+        ])->json('data.token');
+
+        $this->withToken($token)->postJson('/api/v1/admin/users', [
+            'name' => 'Nuevo suscriptor',
+            'email' => 'nuevo-suscriptor@test.test',
+            'phone' => '5551002000',
+            'username' => 'nuevo_suscriptor',
+            'password' => 'secreto-123',
+            'password_confirmation' => 'secreto-123',
+            'plan_id' => $plan->id,
+            'duration_days' => 30,
+            'group_number' => 2,
+            'custom_price' => 149.50,
+        ])->assertCreated()
+            ->assertJsonPath('data.name', 'Nuevo suscriptor')
+            ->assertJsonPath('data.username', 'nuevo_suscriptor')
+            ->assertJsonPath('data.role', 'subscriber')
+            ->assertJsonPath('data.subscription.status', 'active')
+            ->assertJsonPath('data.subscription.group_number', 2)
+            ->assertJsonPath('data.subscription.plan.id', $plan->id);
+
+        $subscriber = User::query()->where('username', 'nuevo_suscriptor')->firstOrFail();
+        $this->assertDatabaseHas('subscriptions', [
+            'user_id' => $subscriber->id,
+            'plan_id' => $plan->id,
+            'status' => 'active',
+            'group_number' => 2,
+            'custom_price' => '149.50',
+            'created_by' => $admin->id,
+        ]);
+
+        $this->postJson('/api/v1/auth/login', [
+            'login' => 'nuevo_suscriptor',
+            'password' => 'secreto-123',
+        ])->assertOk()
+            ->assertJsonPath('data.user.username', 'nuevo_suscriptor')
+            ->assertJsonPath('data.user.subscription.access_allowed', true);
+    }
 
     public function test_admin_can_read_overview_and_manage_core_records(): void
     {

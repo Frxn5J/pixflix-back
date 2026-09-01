@@ -22,6 +22,7 @@ use App\Services\SyncSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -98,7 +99,55 @@ class AdminController extends Controller
         return response()->json(['data' => $this->userData($user->refresh()->load(['subscriptions' => fn ($query) => $query->latest('id')->with('plan')]))]);
     }
 
-    private function assertIdentityFieldsAvailable(array $validated, User $user): void
+    public function storeUser(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+            'email' => ['nullable', 'email', 'max:255', Rule::unique('users', 'email')],
+            'phone' => ['nullable', 'string', 'max:40', Rule::unique('users', 'phone')],
+            'username' => ['required', 'alpha_dash', 'max:60', Rule::unique('users', 'username')],
+            'password' => ['required', 'string', 'min:8', 'max:120', 'confirmed'],
+            'plan_id' => ['nullable', 'integer', Rule::exists('plans', 'id')],
+            'duration_days' => ['sometimes', 'integer', 'between:1,3650'],
+            'group_number' => ['sometimes', 'integer', 'between:1,7'],
+            'custom_price' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:999999.99'],
+        ]);
+        $this->assertIdentityFieldsAvailable($validated);
+
+        $createdBy = $request->user()?->id;
+        $startsAt = now();
+        $durationDays = (int) ($validated['duration_days'] ?? 30);
+
+        $user = DB::transaction(function () use ($validated, $createdBy, $startsAt, $durationDays): User {
+            $subscriber = User::create([
+                'name' => $validated['name'],
+                'email' => $validated['email'] ?? null,
+                'phone' => $validated['phone'] ?? null,
+                'username' => $validated['username'],
+                'password' => $validated['password'],
+                'role' => 'subscriber',
+            ]);
+
+            $subscriber->subscriptions()->create([
+                'plan_id' => $validated['plan_id'] ?? null,
+                'status' => 'active',
+                'is_trial' => false,
+                'group_number' => (int) ($validated['group_number'] ?? 1),
+                'starts_at' => $startsAt,
+                'ends_at' => $startsAt->copy()->addDays($durationDays),
+                'custom_price' => $validated['custom_price'] ?? null,
+                'created_by' => $createdBy,
+            ]);
+
+            return $subscriber;
+        });
+
+        $user->load(['subscriptions' => fn ($query) => $query->latest('id')->with('plan')]);
+
+        return response()->json(['data' => $this->userData($user)], 201);
+    }
+
+    private function assertIdentityFieldsAvailable(array $validated, ?User $user = null): void
     {
         $identityFields = ['email', 'phone', 'username'];
         if (array_intersect($identityFields, array_keys($validated)) === []) {
@@ -108,7 +157,9 @@ class AdminController extends Controller
         $values = [];
 
         foreach ($identityFields as $field) {
-            $value = array_key_exists($field, $validated) ? $validated[$field] : $user->{$field};
+            $value = array_key_exists($field, $validated)
+                ? $validated[$field]
+                : ($user !== null ? $user->{$field} : null);
 
             if ($value === null || $value === '') {
                 continue;
@@ -124,14 +175,17 @@ class AdminController extends Controller
 
             $values[$value] = $field;
 
-            $inUse = User::query()
-                ->where('id', '<>', $user->id)
+            $query = User::query()
                 ->where(function ($query) use ($value): void {
                     $query->where('email', $value)
                         ->orWhere('phone', $value)
                         ->orWhere('username', $value);
-                })
-                ->exists();
+                });
+            if ($user !== null) {
+                $query->where('id', '<>', $user->id);
+            }
+
+            $inUse = $query->exists();
 
             if ($inUse) {
                 throw ValidationException::withMessages([

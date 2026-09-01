@@ -88,6 +88,39 @@ class AdminWebAuthTest extends TestCase
         $this->assertTrue((bool) json_decode((string) Setting::query()->where('key', 'stremio.enabled')->value('value'), true));
     }
 
+    public function test_admin_can_create_a_subscriber_from_the_web_panel(): void
+    {
+        $admin = User::factory()->admin()->create();
+
+        $this->actingAs($admin, 'web')
+            ->get('/admin?section=users')
+            ->assertOk()
+            ->assertSee('Agregar suscriptor')
+            ->assertSee('Crear suscriptor');
+
+        $this->actingAs($admin, 'web')
+            ->post('/admin/users', [
+                'name' => 'Suscriptor web',
+                'username' => 'suscriptor_web',
+                'email' => 'suscriptor-web@test.test',
+                'password' => 'secreto-456',
+                'password_confirmation' => 'secreto-456',
+                'duration_days' => 45,
+                'group_number' => 3,
+            ])
+            ->assertRedirect('/admin?section=users')
+            ->assertSessionHas('success', 'Suscriptor creado.');
+
+        $subscriber = User::query()->where('username', 'suscriptor_web')->firstOrFail();
+        $this->assertSame('subscriber', $subscriber->role);
+        $this->assertDatabaseHas('subscriptions', [
+            'user_id' => $subscriber->id,
+            'status' => 'active',
+            'group_number' => 3,
+            'created_by' => $admin->id,
+        ]);
+    }
+
     public function test_every_admin_section_renders_from_laravel(): void
     {
         $admin = User::factory()->admin()->create();
