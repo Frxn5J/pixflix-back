@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Jobs\RefreshIptvResourcesJob;
 use App\Jobs\SyncIptvJob;
-use App\Jobs\SyncIptvVodJob;
 use App\Jobs\SyncStremioCatalogJob;
 use App\Models\Channel;
 use App\Models\Plan;
@@ -16,7 +15,6 @@ use App\Services\Catalog\StremioContentVerifier;
 use App\Services\Iptv\IptvProxyPool;
 use App\Services\Iptv\IptvResourceSyncService;
 use App\Services\IptvOrg\IptvOrgSyncService;
-use App\Services\IptvVod\IptvVodSyncService;
 use App\Services\SyncProgressService;
 use App\Services\SyncSettings;
 use Illuminate\Http\JsonResponse;
@@ -377,90 +375,6 @@ class AdminController extends Controller
         }
     }
 
-    public function iptvVodPlaylists(): JsonResponse
-    {
-        return response()->json(['data' => [
-            'playlists' => $this->iptvVodPlaylistsData(),
-        ]]);
-    }
-
-    public function updateIptvVodPlaylists(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'playlists' => ['present', 'array', 'max:50'],
-            'playlists.*.id' => ['nullable', 'string', 'max:100'],
-            'playlists.*.name' => ['required', 'string', 'max:120'],
-            'playlists.*.url' => ['required', 'url:http,https', 'max:2048'],
-            'playlists.*.language' => ['nullable', 'string', 'max:80'],
-            'playlists.*.content_type' => ['required', Rule::in(['auto', 'movie'])],
-            'playlists.*.use_proxy' => ['sometimes', 'boolean'],
-            'playlists.*.enabled' => ['required', 'boolean'],
-            'playlists.*.priority' => ['required', 'integer', 'between:1,10000'],
-        ]);
-
-        $playlists = collect($validated['playlists'])
-            ->map(fn (array $playlist, int $index): array => [
-                'id' => trim((string) ($playlist['id'] ?? 'vod-playlist-'.($index + 1))),
-                'name' => trim($playlist['name']),
-                'url' => trim($playlist['url']),
-                'language' => $this->nullableLower($playlist['language'] ?? null),
-                'content_type' => (string) $playlist['content_type'],
-                'use_proxy' => (bool) ($playlist['use_proxy'] ?? true),
-                'enabled' => (bool) $playlist['enabled'],
-                'priority' => (int) $playlist['priority'],
-            ])
-            ->sortBy('priority')
-            ->values()
-            ->all();
-
-        $this->settings->put('iptv.vod_playlists', $playlists);
-
-        return response()->json(['data' => ['playlists' => $playlists]]);
-    }
-
-    public function syncIptvVodPlaylists(IptvVodSyncService $sync): JsonResponse
-    {
-        $progress = $this->progress->start('iptv_vod', 'Sincronización de VOD IPTV');
-        $syncId = (string) $progress['id'];
-        if ($progress['already_running'] ?? false) {
-            return response()->json(['data' => [
-                'queued' => true,
-                'sync_id' => $syncId,
-                'sync_type' => 'iptv_vod',
-                'message' => 'Ya hay una sincronización VOD en curso.',
-            ]], 202);
-        }
-
-        if ($this->syncIsAsync()) {
-            SyncIptvVodJob::dispatch($syncId);
-
-            return response()->json(['data' => [
-                'queued' => true,
-                'sync_id' => $syncId,
-                'sync_type' => 'iptv_vod',
-                'message' => 'La sincronizacion VOD quedo en cola y se ejecutara en segundo plano.',
-            ]], 202);
-        }
-
-        try {
-            $result = $sync->run($syncId);
-            $this->progress->complete($syncId, $result);
-
-            return response()->json(['data' => [
-                ...$result,
-                'sync_id' => $syncId,
-                'sync_type' => 'iptv_vod',
-            ]]);
-        } catch (\Throwable $exception) {
-            $this->progress->fail($syncId, $exception);
-
-            return response()->json(['error' => [
-                'code' => 'iptv_vod_sync_failed',
-                'message' => $exception->getMessage(),
-            ]], 502);
-        }
-    }
-
     public function refreshIptvResources(IptvResourceSyncService $sync): JsonResponse
     {
         if ($this->syncIsAsync()) {
@@ -549,7 +463,7 @@ class AdminController extends Controller
         $validated = $request->validate([
             'enabled' => ['required', 'boolean'],
             'timeout_seconds' => ['required', 'integer', 'between:1,60'],
-            'addons' => ['present', 'array', 'max:100'],
+            'addons' => ['present', 'array', 'max:1'],
             'addons.*.id' => ['nullable', 'string', 'max:100'],
             'addons.*.name' => ['required', 'string', 'max:120'],
             'addons.*.base_url' => ['required', 'url:http,https', 'max:2048'],
@@ -559,14 +473,13 @@ class AdminController extends Controller
         ]);
 
         $addons = $this->normalizeStremioAddons($validated['addons'], (int) $validated['timeout_seconds']);
-        if ($validated['enabled'] && ! collect($addons)->contains(fn (array $addon): bool => $addon['enabled'] === true)) {
+        if ($validated['enabled'] && (! isset($addons[0]) || $addons[0]['enabled'] !== true)) {
             throw ValidationException::withMessages([
-                'addons' => 'Agrega y activa al menos un addon Stremio de catálogo.',
+                'addons' => 'Configura y activa el único addon Stremio de VOD.',
             ]);
         }
 
-        $this->settings->put('stremio.catalog_enabled', (bool) $validated['enabled']);
-        $this->settings->put('stremio.catalog_addons', $addons);
+        $this->settings->put('stremio.vod_addon', $addons[0] ?? null);
         $sync->invalidate();
 
         return response()->json(['data' => $this->stremioCatalogData()]);
@@ -586,7 +499,7 @@ class AdminController extends Controller
             'cache_ttl_seconds' => ['required', 'integer', 'between:60,604800'],
             'languages' => ['present', 'array', 'max:20'],
             'languages.*' => ['string', 'max:40'],
-            'addons' => ['present', 'array', 'max:100'],
+            'addons' => ['present', 'array', 'max:1'],
             'addons.*.id' => ['nullable', 'string', 'max:100'],
             'addons.*.name' => ['required', 'string', 'max:120'],
             'addons.*.base_url' => ['required', 'url:http,https', 'max:2048'],
@@ -596,10 +509,7 @@ class AdminController extends Controller
         ]);
 
         $addons = $this->normalizeStremioAddons($validated['addons'], (int) $validated['timeout_seconds']);
-        $primary = (bool) ($validated['primary'] ?? $this->settings->get(
-            'stremio.primary',
-            config('pixflix.stremio.primary', false),
-        ));
+        $primary = (bool) $validated['enabled'];
 
         if ($primary && ! $validated['enabled']) {
             throw ValidationException::withMessages([
@@ -607,18 +517,17 @@ class AdminController extends Controller
             ]);
         }
 
-        if ($primary && ! collect($addons)->contains(fn (array $addon): bool => $addon['enabled'] === true)) {
+        if ($primary && (! isset($addons[0]) || $addons[0]['enabled'] !== true)) {
             throw ValidationException::withMessages([
-                'addons' => 'Agrega y activa al menos un addon Stremio de reproducción.',
+                'addons' => 'Configura y activa el único addon Stremio de VOD.',
             ]);
         }
 
-        $this->settings->put('stremio.streams_enabled', (bool) $validated['enabled']);
+        $this->settings->put('stremio.vod_addon', $addons[0] ?? null);
         $this->settings->put('stremio.primary', $primary);
         $this->settings->put('stremio.timeout_seconds', (int) $validated['timeout_seconds']);
         $this->settings->put('stremio.cache_ttl_seconds', (int) $validated['cache_ttl_seconds']);
         $this->settings->put('stremio.languages', array_values(array_filter(array_map('trim', $validated['languages']))));
-        $this->settings->put('stremio.stream_addons', $addons);
 
         return response()->json(['data' => $this->stremioStreamsData()]);
     }
@@ -660,7 +569,7 @@ class AdminController extends Controller
             'cache_ttl_seconds' => ['required', 'integer', 'between:60,604800'],
             'languages' => ['present', 'array', 'max:20'],
             'languages.*' => ['string', 'max:40'],
-            'addons' => ['present', 'array', 'max:100'],
+            'addons' => ['present', 'array', 'max:1'],
             'addons.*.id' => ['nullable', 'string', 'max:100'],
             'addons.*.name' => ['required', 'string', 'max:120'],
             'addons.*.base_url' => ['required', 'url:http,https', 'max:2048'],
@@ -682,10 +591,7 @@ class AdminController extends Controller
             ->values()
             ->all();
 
-        $primary = (bool) ($validated['primary'] ?? $this->settings->get(
-            'stremio.primary',
-            config('pixflix.stremio.primary', false),
-        ));
+        $primary = (bool) $validated['enabled'];
 
         if ($primary && ! $validated['enabled']) {
             throw ValidationException::withMessages([
@@ -693,20 +599,16 @@ class AdminController extends Controller
             ]);
         }
 
-        if ($primary && ! collect($addons)->contains(fn (array $addon): bool => $addon['enabled'] === true)) {
+        if ($primary && (! isset($addons[0]) || $addons[0]['enabled'] !== true)) {
             throw ValidationException::withMessages([
-                'addons' => 'Agrega y activa al menos un addon Stremio para usarlo como fuente principal.',
+                'addons' => 'Configura y activa el único addon Stremio de VOD.',
             ]);
         }
 
-        $this->settings->put('stremio.enabled', (bool) $validated['enabled']);
-        $this->settings->put('stremio.streams_enabled', (bool) $validated['enabled']);
-        $this->settings->put('stremio.primary', $primary);
+        $this->settings->put('stremio.vod_addon', $addons[0] ?? null);
         $this->settings->put('stremio.timeout_seconds', (int) $validated['timeout_seconds']);
         $this->settings->put('stremio.cache_ttl_seconds', (int) $validated['cache_ttl_seconds']);
         $this->settings->put('stremio.languages', array_values(array_filter(array_map('trim', $validated['languages']))));
-        $this->settings->put('stremio.addons', $addons);
-        $this->settings->put('stremio.stream_addons', $addons);
         $sync->invalidate();
 
         return response()->json(['data' => $this->streamFallbackData()]);
@@ -897,13 +799,6 @@ class AdminController extends Controller
             : [];
     }
 
-    private function iptvVodPlaylistsData(): array
-    {
-        $playlists = $this->settings->get('iptv.vod_playlists', []);
-
-        return is_array($playlists) ? array_values($playlists) : [];
-    }
-
     private function nullableUpper(mixed $value): ?string
     {
         $value = trim((string) $value);
@@ -938,12 +833,9 @@ class AdminController extends Controller
     /** @return array<int, array<string, mixed>> */
     private function configuredStremioAddons(string $key): array
     {
-        $addons = $this->settings->get('stremio.'.$key, config('pixflix.stremio.'.$key, []));
-        if (! is_array($addons) || $addons === []) {
-            $addons = $this->settings->get('stremio.addons', config('pixflix.stremio.addons', []));
-        }
+        $addon = $this->settings->get('stremio.vod_addon', config('pixflix.stremio.vod_addon'));
 
-        return is_array($addons) ? array_values(array_filter($addons, 'is_array')) : [];
+        return is_array($addon) ? [$addon] : [];
     }
 
     private function stremioCatalogData(): array
@@ -955,8 +847,7 @@ class AdminController extends Controller
             : collect();
 
         return [
-            'enabled' => (bool) ($this->settings->get('stremio.catalog_enabled', config('pixflix.stremio.catalog_enabled'))
-                ?? $this->settings->get('stremio.enabled', config('pixflix.stremio.enabled', false))),
+            'enabled' => isset($addons[0]) && (bool) ($addons[0]['enabled'] ?? true),
             'timeout_seconds' => (int) $this->settings->get('stremio.timeout_seconds', config('pixflix.stremio.timeout_seconds', 10)),
             'addons' => $addons,
             'addon_counts' => collect($addons)
@@ -983,13 +874,12 @@ class AdminController extends Controller
     private function stremioStreamsData(): array
     {
         return [
-            'enabled' => (bool) ($this->settings->get('stremio.streams_enabled', config('pixflix.stremio.streams_enabled'))
-                ?? $this->settings->get('stremio.enabled', config('pixflix.stremio.enabled', false))),
-            'primary' => (bool) $this->settings->get('stremio.primary', config('pixflix.stremio.primary', false)),
+            'enabled' => ($addon = $this->configuredStremioAddons('vod_addon')) !== [] && (bool) ($addon[0]['enabled'] ?? true),
+            'primary' => true,
             'timeout_seconds' => (int) $this->settings->get('stremio.timeout_seconds', config('pixflix.stremio.timeout_seconds', 10)),
             'cache_ttl_seconds' => (int) $this->settings->get('stremio.cache_ttl_seconds', config('pixflix.stremio.cache_ttl_seconds', 1800)),
             'languages' => $this->settings->get('stremio.languages', config('pixflix.stremio.languages', [])),
-            'addons' => $this->configuredStremioAddons('stream_addons'),
+            'addons' => $this->configuredStremioAddons('vod_addon'),
         ];
     }
 

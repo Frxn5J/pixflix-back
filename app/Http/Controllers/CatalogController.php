@@ -183,51 +183,9 @@ class CatalogController extends Controller
 
     private function activeTitles(): Builder
     {
-        $versions = $this->visibleSnapshotVersions();
-
-        if ($versions === []) {
-            return Title::query()->where('is_active', true);
-        }
-
-        $latestTitleIds = Title::query()
-            ->selectRaw('MAX(id)')
-            ->where('source', 'catalog')
-            ->whereIn('snapshot_version', $versions)
-            ->groupBy('slug');
-
-        return Title::query()->where(function (Builder $query) use ($latestTitleIds): void {
-            $query
-                ->whereIn('id', $latestTitleIds)
-                ->orWhere(function (Builder $vodQuery): void {
-                    $vodQuery
-                        ->where('source', 'iptv_vod')
-                        ->where('is_active', true);
-                })
-                ->orWhere(function (Builder $stremioQuery): void {
-                    $stremioQuery
-                        ->where('source', 'stremio')
-                        ->where('is_active', true);
-                });
-        });
-    }
-
-    private function visibleSnapshotVersions(): array
-    {
-        $successfulVersion = CatalogSnapshot::current()?->version;
-        $versions = CatalogSnapshot::query()
-            ->whereIn('status', ['partial', 'running'])
-            ->when(
-                $successfulVersion !== null,
-                fn (Builder $query) => $query->where('version', '>', $successfulVersion),
-            )
-            ->pluck('version')
-            ->all();
-
-        if ($successfulVersion !== null) {
-            $versions[] = $successfulVersion;
-        }
-
-        return array_values(array_unique(array_map('intval', $versions)));
+        return Title::query()
+            ->where('source', 'stremio')
+            ->where('is_active', true);
     }
 
     /**

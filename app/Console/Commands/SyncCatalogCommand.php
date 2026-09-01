@@ -26,12 +26,9 @@ class SyncCatalogCommand extends Command
             $this->info('Lock de sincronizacion liberado.');
         }
 
-        if ((bool) ($settings->get('stremio.catalog_enabled', config('pixflix.stremio.catalog_enabled'))
-            ?? $settings->get('stremio.enabled', config('pixflix.stremio.enabled', false)))) {
-            $this->info('El catalogo principal es Stremio; se omite la sincronizacion del proveedor legacy.');
+        $this->warn('La sincronización del proveedor legacy está deshabilitada. Usa pixflix:sync-stremio-vod.');
 
-            return self::SUCCESS;
-        }
+        return self::SUCCESS;
 
         if ($this->option('debug')) {
             Event::listen(MessageLogged::class, function (MessageLogged $event): void {

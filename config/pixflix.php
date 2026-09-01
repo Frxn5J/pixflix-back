@@ -81,6 +81,15 @@ return [
         'catalog_sync_ttl_seconds' => (int) env('PIXFLIX_STREMIO_CATALOG_SYNC_TTL_SECONDS', 900),
         'catalog_sync_wait_seconds' => (int) env('PIXFLIX_STREMIO_CATALOG_SYNC_WAIT_SECONDS', 120),
         'languages' => array_values(array_filter(array_map('trim', explode(',', env('PIXFLIX_STREMIO_LANGUAGES', ''))))),
+        // Pixflix VOD has one provider by design. Both catalog and playback
+        // read this same addon; the old plural settings are no longer read.
+        'vod_addon' => env('PIXFLIX_STREMIO_VOD_ADDON_URL') ? [
+            'id' => env('PIXFLIX_STREMIO_VOD_ADDON_ID', 'pixflix-vod'),
+            'name' => env('PIXFLIX_STREMIO_VOD_ADDON_NAME', 'Pixflix VOD'),
+            'base_url' => env('PIXFLIX_STREMIO_VOD_ADDON_URL'),
+            'enabled' => filter_var(env('PIXFLIX_STREMIO_VOD_ADDON_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
+            'timeout_seconds' => (int) env('PIXFLIX_STREMIO_TIMEOUT_SECONDS', 10),
+        ] : null,
         'catalog_addons' => [],
         'stream_addons' => [],
         'addons' => [],

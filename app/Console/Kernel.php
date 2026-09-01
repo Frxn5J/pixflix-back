@@ -17,7 +17,7 @@ class Kernel extends ConsoleKernel
             ->daily();
 
         $settings = app(SyncSettings::class);
-        $schedule->command('pixflix:sync-catalog')
+        $schedule->command('pixflix:sync-stremio-vod')
             ->dailyAt((string) $settings->get('sync.cron_hour', config('pixflix.sync.cron_hour', '04:00')))
             ->timezone((string) $settings->get('sync.timezone', config('pixflix.sync.timezone', 'UTC')))
             ->withoutOverlapping()

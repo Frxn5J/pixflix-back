@@ -73,7 +73,7 @@ class SyncProgressService
             $states[$focus['id']] = $focus;
         }
 
-        foreach (['iptv', 'iptv_vod', 'stremio'] as $type) {
+        foreach (['iptv', 'stremio'] as $type) {
             if (($state = $this->latest($type)) !== null) {
                 $states[$state['id']] = $state;
             }

@@ -6,13 +6,10 @@ use App\Models\Episode;
 use App\Models\Title;
 use App\Services\SyncSettings;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
-use Throwable;
 
 class StreamResolver
 {
     public function __construct(
-        private readonly PrincipalCatalogClient $catalog,
         private readonly StremioResolver $stremio,
         private readonly SyncSettings $settings,
     ) {}
@@ -23,17 +20,13 @@ class StreamResolver
             return [];
         }
 
-        $raw = $title->raw_extract ?? [];
         $language = $this->effectiveLanguage($language);
         $key = "title:{$title->id}";
 
-        return $this->resolveInOrder(
+        return $this->resolveFromVodAddon(
             $key,
-            $raw['streams'] ?? $title->getAttribute('streams') ?? [],
-            fn (): array => $this->apiStreams($raw['extractUrl'] ?? $raw['extract_url'] ?? $raw['url'] ?? null),
             fn (): array => $this->stremio->forTitle($title, $language),
             $language,
-            $title->slug,
         );
     }
 
@@ -41,13 +34,10 @@ class StreamResolver
     {
         $language = $this->effectiveLanguage($language);
 
-        return $this->resolveInOrder(
+        return $this->resolveFromVodAddon(
             "episode:{$episode->id}",
-            $episode->streams,
-            fn (): array => $this->apiStreams($episode->extract_url ?? $episode->url),
             fn (): array => $this->stremio->forEpisode($episode, $language),
             $language,
-            "episode-{$episode->id}",
         );
     }
 
@@ -85,105 +75,25 @@ class StreamResolver
         ];
     }
 
-    private function resolveInOrder(
+    private function resolveFromVodAddon(
         string $key,
-        mixed $cached,
-        callable $api,
         callable $stremio,
         ?string $language,
-        string $fixtureKey,
     ): array {
-        if (! app()->environment('testing') && (bool) config('pixflix.catalog.use_fixtures', false)) {
-            return $this->fixtureStreams($fixtureKey);
-        }
-
         $languages = $language === null || trim($language) === '' ? null : $language;
         $cacheKey = $key.':'.sha1($languages ?? '*');
 
-        if ($this->stremioIsPrimary()) {
-            $stremioCacheKey = "pixflix:stremio:streams:{$cacheKey}";
-            $cachedStremioStreams = $this->usable(Cache::get($stremioCacheKey), $languages);
-
-            if ($cachedStremioStreams !== []) {
-                return $cachedStremioStreams;
-            }
-
-            try {
-                $addonStreams = $this->usable($stremio(), $languages);
-
-                if ($addonStreams !== []) {
-                    $this->remember($cacheKey, $addonStreams, true);
-
-                    return $addonStreams;
-                }
-            } catch (Throwable $error) {
-                Log::notice('Stremio primary resolution failed', ['key' => $key, 'error' => $error->getMessage()]);
-            }
-
-            return app()->environment('testing') || (bool) config('pixflix.catalog.use_fixtures', false)
-                ? $this->fixtureStreams($fixtureKey)
-                : [];
-        }
-
-        $cachedStreams = $this->usable($cached, $languages);
+        $cachedStreams = $this->usable(Cache::get("pixflix:stremio:vod:streams:{$cacheKey}"), $languages);
 
         if ($cachedStreams !== []) {
             return $cachedStreams;
         }
-
-        $memoryCache = Cache::get("pixflix:streams:{$cacheKey}");
-        $cachedStreams = $this->usable($memoryCache, $languages);
-
-        if ($cachedStreams !== []) {
-            return $cachedStreams;
+        $addonStreams = $this->usable($stremio(), $languages);
+        if ($addonStreams !== []) {
+            $this->remember($cacheKey, $addonStreams);
         }
 
-        try {
-            $apiStreams = $this->usable($api(), $languages);
-
-            if ($apiStreams !== []) {
-                $this->remember($cacheKey, $apiStreams);
-
-                return $apiStreams;
-            }
-        } catch (Throwable $error) {
-            Log::notice('Playback API resolution failed', ['key' => $key, 'error' => $error->getMessage()]);
-        }
-
-        try {
-            $addonStreams = $this->usable($stremio(), $languages);
-
-            if ($addonStreams !== []) {
-                $this->remember($cacheKey, $addonStreams);
-
-                return $addonStreams;
-            }
-        } catch (Throwable $error) {
-            Log::notice('Stremio fallback resolution failed', ['key' => $key, 'error' => $error->getMessage()]);
-        }
-
-        return app()->environment('testing') || (bool) config('pixflix.catalog.use_fixtures', false)
-            ? $this->fixtureStreams($fixtureKey)
-            : [];
-    }
-
-    private function stremioIsPrimary(): bool
-    {
-        return (bool) $this->settings->get(
-            'stremio.primary',
-            config('pixflix.stremio.primary', false),
-        );
-    }
-
-    private function apiStreams(mixed $url): array
-    {
-        if (! is_string($url) || trim($url) === '') {
-            return [];
-        }
-
-        $payload = $this->catalog->extract($url);
-
-        return is_array($payload['streams'] ?? null) ? $payload['streams'] : [];
+        return $addonStreams;
     }
 
     private function usable(mixed $streams, ?string $language): array
@@ -238,12 +148,12 @@ class StreamResolver
         };
     }
 
-    private function remember(string $key, array $streams, bool $stremio = false): void
+    private function remember(string $key, array $streams): void
     {
         Cache::put(
-            ($stremio ? 'pixflix:stremio:streams:' : 'pixflix:streams:').$key,
+            'pixflix:stremio:vod:streams:'.$key,
             $streams,
-            max(60, (int) $this->settings->get('stremio.cache_ttl_seconds', config('pixflix.stremio.cache_ttl_seconds', 1800))),
+            max(60, (int) config('pixflix.stremio.cache_ttl_seconds', 1800)),
         );
     }
 
@@ -260,18 +170,4 @@ class StreamResolver
         ) ?: $url;
     }
 
-    private function fixtureStreams(string $key): array
-    {
-        return [
-            [
-                'quality' => '1080p',
-                'language' => 'Latino',
-                'hls' => (string) config(
-                    'pixflix.catalog.fixture_hls_url',
-                    'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
-                ),
-                'mp4' => null,
-            ],
-        ];
-    }
 }

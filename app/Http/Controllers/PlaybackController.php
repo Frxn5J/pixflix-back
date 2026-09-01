@@ -10,17 +10,13 @@ use App\Models\PlaybackLog;
 use App\Models\Title;
 use App\Models\WatchProgress;
 use App\Services\Catalog\StreamResolver;
-use App\Services\IptvVod\IptvVodPlayback;
 use App\Support\UrlSafety;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class PlaybackController extends Controller
 {
-    public function __construct(
-        private readonly StreamResolver $streams,
-        private readonly IptvVodPlayback $vod,
-    ) {}
+    public function __construct(private readonly StreamResolver $streams) {}
 
     public function titleStreams(Request $request, string $slug): JsonResponse
     {
@@ -36,8 +32,7 @@ class PlaybackController extends Controller
 
         $this->logPlayback($request, 'play', $title, null);
 
-        $streams = $this->vod->titleStreams($title)
-            ?? $this->streams->titleStreams($title, $request->string('language')->toString() ?: null);
+        $streams = $this->streams->titleStreams($title, $request->string('language')->toString() ?: null);
 
         return response()->json(['data' => $streams]);
     }
@@ -53,8 +48,7 @@ class PlaybackController extends Controller
         $title = $episode->season?->title()->first();
         $this->logPlayback($request, 'play', $title, $episode);
 
-        $streams = $this->vod->episodeStreams($episode)
-            ?? $this->streams->episodeStreams($episode, $request->string('language')->toString() ?: null);
+        $streams = $this->streams->episodeStreams($episode, $request->string('language')->toString() ?: null);
 
         return response()->json(['data' => $streams]);
     }
@@ -68,12 +62,7 @@ class PlaybackController extends Controller
         $episode = isset($payload['episode_id'])
             ? Episode::query()->with('season.title')->find($payload['episode_id'])
             : null;
-        $streams = $episode !== null
-            ? $this->vod->episodeStreams($episode)
-            : ($title !== null ? $this->vod->titleStreams($title) : null);
-        if ($streams === null) {
-            $streams = $this->streams->resolve($payload);
-        }
+        $streams = $this->streams->resolve($payload);
 
         if ($streams === []) {
             throw new ApiException('not_found', 'No fue posible resolver el contenido.', 404);

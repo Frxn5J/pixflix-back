@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Jobs\RefreshIptvResourcesJob;
 use App\Jobs\SyncIptvJob;
-use App\Jobs\SyncIptvVodJob;
 use App\Models\Title;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -49,18 +48,11 @@ class QueueAndCacheTest extends TestCase
             ->assertJsonPath('data.sync_type', 'iptv')
             ->assertJsonStructure(['data' => ['sync_id']]);
 
-        $this->withToken($token)->postJson('/api/v1/admin/iptv-vod-playlists/sync')
-            ->assertStatus(202)
-            ->assertJsonPath('data.queued', true)
-            ->assertJsonPath('data.sync_type', 'iptv_vod')
-            ->assertJsonStructure(['data' => ['sync_id']]);
-
         $this->withToken($token)->postJson('/api/v1/admin/iptv-resources/refresh')
             ->assertStatus(202)
             ->assertJsonPath('data.queued', true);
 
         Queue::assertPushed(SyncIptvJob::class);
-        Queue::assertPushed(SyncIptvVodJob::class);
         Queue::assertPushed(RefreshIptvResourcesJob::class);
     }
 

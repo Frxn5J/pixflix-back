@@ -23,29 +23,16 @@ class StremioCatalogSyncService
         private readonly SyncSettings $settings,
         private readonly TmdbMetadataClient $tmdb,
         private readonly SyncProgressService $progress,
+        private readonly StremioVodAddon $vodAddon,
     ) {}
 
     /**
-     * Import the active Stremio catalogs on the first catalog request. The
-     * short-lived marker prevents every catalog endpoint from downloading the
-     * addon catalogs again when they do not contain any items.
+     * Catalog sync is an explicit/scheduled operation. Requests must only
+     * read the last successful local VOD snapshot.
      */
     public function ensureAvailable(): void
     {
-        if (! $this->isPrimary()) {
-            return;
-        }
-
-        if (Cache::has($this->lastSyncKey())) {
-            return;
-        }
-
-        $result = $this->sync();
-        if (($result['errors'] ?? []) !== []) {
-            Log::warning('Stremio catalog import completed with errors', [
-                'errors' => $result['errors'],
-            ]);
-        }
+        // Kept as a no-op for callers that only need the local catalog.
     }
 
     public function invalidate(): void
@@ -553,40 +540,20 @@ class StremioCatalogSyncService
 
     private function isPrimary(): bool
     {
-        return $this->isEnabled() && $this->catalogAddons() !== [];
+        return $this->isEnabled() && $this->vodAddon->active() !== null;
     }
 
     private function isEnabled(): bool
     {
-        $enabled = $this->settings->get('stremio.catalog_enabled', config('pixflix.stremio.catalog_enabled'));
-
-        return (bool) ($enabled ?? $this->settings->get('stremio.enabled', config('pixflix.stremio.enabled', false)));
+        return $this->vodAddon->active() !== null;
     }
 
     /** @return array<int, array<string, mixed>> */
     private function catalogAddons(): array
     {
-        $configured = $this->settings->get('stremio.catalog_addons', config('pixflix.stremio.catalog_addons', []));
-        if (! is_array($configured) || $configured === []) {
-            $configured = $this->settings->get('stremio.addons', config('pixflix.stremio.addons', []));
-        }
+        $addon = $this->vodAddon->active();
 
-        return is_array($configured)
-            ? collect($configured)
-                ->filter(fn ($addon): bool => is_array($addon)
-                    && ($addon['enabled'] ?? true) === true
-                    && filter_var($addon['base_url'] ?? null, FILTER_VALIDATE_URL))
-                ->map(fn (array $addon, int $index): array => [
-                    'id' => trim((string) ($addon['id'] ?? 'addon-'.($index + 1))),
-                    'name' => trim((string) ($addon['name'] ?? 'Addon Stremio')) ?: 'Addon Stremio',
-                    'base_url' => trim((string) $addon['base_url']),
-                    'timeout_seconds' => $this->timeout($addon),
-                    'priority' => max(1, (int) ($addon['priority'] ?? 100)),
-                ])
-                ->sortBy('priority')
-                ->values()
-                ->all()
-            : [];
+        return $addon === null ? [] : [$addon];
     }
 
     private function timeout(array $addon): int

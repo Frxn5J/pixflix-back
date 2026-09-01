@@ -8,7 +8,6 @@ use App\Services\Catalog\StremioContentVerifier;
 use App\Services\Iptv\IptvProxyPool;
 use App\Services\Iptv\IptvResourceSyncService;
 use App\Services\IptvOrg\IptvOrgSyncService;
-use App\Services\IptvVod\IptvVodSyncService;
 use App\Services\SyncProgressService;
 use App\Services\SyncSettings;
 use Illuminate\Http\JsonResponse;
@@ -38,7 +37,6 @@ class AdminWebController extends Controller
             'plans' => $this->data($this->admin->plans()),
             'channels' => $this->data($this->admin->channels(Request::create('/admin/channels', 'GET'))),
             'iptvPlaylists' => $this->data($this->admin->iptvPlaylists())['playlists'] ?? [],
-            'iptvVodPlaylists' => $this->data($this->admin->iptvVodPlaylists())['playlists'] ?? [],
             'iptvProxies' => $this->data($this->admin->iptvProxies($proxyPool))['proxies'] ?? [],
             'streamFallback' => $this->data($this->admin->streamFallback()),
             'syncProgress' => $this->progress->dashboard($request->session()->get('sync_id')),
@@ -139,59 +137,6 @@ class AdminWebController extends Controller
     public function syncIptvPlaylists(IptvOrgSyncService $sync): RedirectResponse
     {
         return $this->forward('iptv-playlists', fn () => $this->admin->syncIptvPlaylists($sync), 'Sincronizacion IPTV solicitada.');
-    }
-
-    public function updateIptvVodPlaylists(Request $request): RedirectResponse
-    {
-        if (! is_array($request->input('playlists'))) {
-            $request->merge(['playlists' => []]);
-        }
-
-        return $this->forward('iptv-vod-playlists', fn () => $this->admin->updateIptvVodPlaylists($request), 'Listas VOD guardadas.');
-    }
-
-    public function addIptvVodPlaylist(Request $request): RedirectResponse
-    {
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:120'],
-            'url' => ['required', 'url:http,https', 'max:2048'],
-            'language' => ['nullable', 'string', 'max:80'],
-            'content_type' => ['required', 'in:auto,movie'],
-            'use_proxy' => ['sometimes', 'boolean'],
-            'priority' => ['required', 'integer', 'between:1,10000'],
-        ]);
-        $playlists = $this->data($this->admin->iptvVodPlaylists())['playlists'] ?? [];
-        $playlists[] = [
-            'id' => 'vod-playlist-'.Str::lower(Str::random(10)),
-            'name' => $validated['name'],
-            'url' => $validated['url'],
-            'language' => $validated['language'] ?? null,
-            'content_type' => $validated['content_type'],
-            'use_proxy' => (bool) ($validated['use_proxy'] ?? true),
-            'enabled' => true,
-            'priority' => (int) $validated['priority'],
-        ];
-
-        return $this->forward('iptv-vod-playlists', fn () => $this->admin->updateIptvVodPlaylists($this->syntheticRequest([
-            'playlists' => $playlists,
-        ])), 'Lista VOD agregada.');
-    }
-
-    public function removeIptvVodPlaylist(string $id): RedirectResponse
-    {
-        $playlists = collect($this->data($this->admin->iptvVodPlaylists())['playlists'] ?? [])
-            ->reject(fn (array $playlist): bool => (string) ($playlist['id'] ?? '') === $id)
-            ->values()
-            ->all();
-
-        return $this->forward('iptv-vod-playlists', fn () => $this->admin->updateIptvVodPlaylists($this->syntheticRequest([
-            'playlists' => $playlists,
-        ])), 'Lista VOD eliminada.');
-    }
-
-    public function syncIptvVodPlaylists(IptvVodSyncService $sync): RedirectResponse
-    {
-        return $this->forward('iptv-vod-playlists', fn () => $this->admin->syncIptvVodPlaylists($sync), 'Sincronizacion VOD solicitada.');
     }
 
     public function refreshIptvResources(IptvResourceSyncService $sync): RedirectResponse
@@ -520,8 +465,7 @@ class AdminWebController extends Controller
     {
         return in_array($section, [
             'overview', 'users', 'subscriptions', 'plans', 'channels',
-            'iptv-playlists', 'iptv-vod-playlists', 'iptv-proxies', 'fallback',
-            'stremio-catalog', 'stremio-streams', 'trials',
+            'iptv-playlists', 'iptv-proxies', 'fallback', 'trials',
         ], true) ? $section : 'overview';
     }
 

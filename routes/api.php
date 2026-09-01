@@ -62,9 +62,6 @@ Route::prefix('v1')->group(function () {
             Route::get('/iptv-playlists', [AdminController::class, 'iptvPlaylists'])->name('api.v1.admin.iptv-playlists');
             Route::put('/iptv-playlists', [AdminController::class, 'updateIptvPlaylists'])->name('api.v1.admin.iptv-playlists.update');
             Route::post('/iptv-playlists/sync', [AdminController::class, 'syncIptvPlaylists'])->name('api.v1.admin.iptv-playlists.sync');
-            Route::get('/iptv-vod-playlists', [AdminController::class, 'iptvVodPlaylists'])->name('api.v1.admin.iptv-vod-playlists');
-            Route::put('/iptv-vod-playlists', [AdminController::class, 'updateIptvVodPlaylists'])->name('api.v1.admin.iptv-vod-playlists.update');
-            Route::post('/iptv-vod-playlists/sync', [AdminController::class, 'syncIptvVodPlaylists'])->name('api.v1.admin.iptv-vod-playlists.sync');
             Route::post('/iptv-resources/refresh', [AdminController::class, 'refreshIptvResources'])->name('api.v1.admin.iptv-resources.refresh');
             Route::get('/iptv-proxies', [AdminController::class, 'iptvProxies'])->name('api.v1.admin.iptv-proxies');
             Route::put('/iptv-proxies', [AdminController::class, 'updateIptvProxies'])->name('api.v1.admin.iptv-proxies.update');
@@ -83,24 +80,6 @@ Route::prefix('v1')->group(function () {
             Route::post('/stream-fallback/sync-catalog', [AdminController::class, 'syncStreamFallbackCatalog'])
                 ->middleware('role:admin')
                 ->name('api.v1.admin.stream-fallback.sync-catalog');
-            Route::get('/stremio/catalog', [AdminController::class, 'stremioCatalog'])
-                ->middleware('role:admin')
-                ->name('api.v1.admin.stremio.catalog');
-            Route::put('/stremio/catalog', [AdminController::class, 'updateStremioCatalog'])
-                ->middleware('role:admin')
-                ->name('api.v1.admin.stremio.catalog.update');
-            Route::post('/stremio/catalog/verify', [AdminController::class, 'verifyStremioCatalogAddon'])
-                ->middleware('role:admin')
-                ->name('api.v1.admin.stremio.catalog.verify');
-            Route::get('/stremio/streams', [AdminController::class, 'stremioStreams'])
-                ->middleware('role:admin')
-                ->name('api.v1.admin.stremio.streams');
-            Route::put('/stremio/streams', [AdminController::class, 'updateStremioStreams'])
-                ->middleware('role:admin')
-                ->name('api.v1.admin.stremio.streams.update');
-            Route::post('/stremio/streams/verify', [AdminController::class, 'verifyStremioStreamAddon'])
-                ->middleware('role:admin')
-                ->name('api.v1.admin.stremio.streams.verify');
         });
 
         Route::middleware('subscription.active')->group(function () {

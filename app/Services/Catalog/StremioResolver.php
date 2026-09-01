@@ -11,7 +11,10 @@ use Throwable;
 
 class StremioResolver
 {
-    public function __construct(private readonly SyncSettings $settings) {}
+    public function __construct(
+        private readonly SyncSettings $settings,
+        private readonly StremioVodAddon $vodAddon,
+    ) {}
 
     public function forTitle(Title $title, ?string $language = null): array
     {
@@ -54,8 +57,7 @@ class StremioResolver
         ?string $searchTitle = null,
         ?string $searchYear = null,
     ): array {
-        $enabled = $this->settings->get('stremio.streams_enabled', config('pixflix.stremio.streams_enabled'));
-        if (! (bool) ($enabled ?? $this->settings->get('stremio.enabled', config('pixflix.stremio.enabled', false)))) {
+        if ($this->vodAddon->active() === null) {
             return [];
         }
 
@@ -255,29 +257,12 @@ class StremioResolver
 
     private function streamAddons(): array
     {
-        $configured = $this->settings->get('stremio.stream_addons', config('pixflix.stremio.stream_addons', []));
-        if (! is_array($configured) || $configured === []) {
-            $configured = $this->settings->get('stremio.addons', config('pixflix.stremio.addons', []));
-        }
+        $addon = $this->vodAddon->active();
 
-        if (! is_array($configured)) {
-            return [];
-        }
-
-        return collect($configured)
-            ->filter(fn ($addon): bool => is_array($addon)
-                && ($addon['enabled'] ?? true) === true
-                && filter_var($addon['base_url'] ?? null, FILTER_VALIDATE_URL))
-            ->map(fn (array $addon): array => [
-                'id' => (string) ($addon['id'] ?? $addon['base_url']),
-                'name' => trim((string) ($addon['name'] ?? 'Addon Stremio')) ?: 'Addon Stremio',
-                'base_url' => rtrim($this->withoutManifest((string) $addon['base_url']), '/'),
-                'timeout_seconds' => max(1, min(60, (int) ($addon['timeout_seconds'] ?? $this->settings->get('stremio.timeout_seconds', config('pixflix.stremio.timeout_seconds', 10))))),
-                'priority' => max(1, (int) ($addon['priority'] ?? 100)),
-            ])
-            ->sortBy('priority')
-            ->values()
-            ->all();
+        return $addon === null ? [] : [[
+            ...$addon,
+            'base_url' => rtrim($this->withoutManifest((string) $addon['base_url']), '/'),
+        ]];
     }
 
     private function contentIds(Title $title): array
