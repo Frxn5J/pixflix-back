@@ -287,6 +287,14 @@ class AdminWebController extends Controller
 
     public function updateStreamFallback(Request $request, StremioCatalogSyncService $sync): RedirectResponse
     {
+        if ($request->input('stremio_role') === 'catalog') {
+            return $this->updateStremioCatalog($request, $sync);
+        }
+
+        if ($request->input('stremio_role') === 'streams') {
+            return $this->updateStremioStreams($request);
+        }
+
         $languages = collect(explode(',', (string) $request->input('languages_csv', '')))
             ->map(fn (string $language): string => trim($language))
             ->filter()
@@ -302,6 +310,14 @@ class AdminWebController extends Controller
 
     public function addStremioAddon(Request $request, StremioAddonVerifier $verifier, StremioCatalogSyncService $sync): RedirectResponse
     {
+        if ($request->input('stremio_role') === 'catalog') {
+            return $this->addStremioCatalogAddon($request, $verifier, $sync);
+        }
+
+        if ($request->input('stremio_role') === 'streams') {
+            return $this->addStremioStreamAddon($request, $verifier);
+        }
+
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:120'],
             'base_url' => ['required', 'url:http,https', 'max:2048'],
@@ -341,6 +357,14 @@ class AdminWebController extends Controller
 
     public function removeStremioAddon(string $id, StremioCatalogSyncService $sync): RedirectResponse
     {
+        if (request()->input('stremio_role') === 'catalog') {
+            return $this->removeStremioCatalogAddon($id, $sync);
+        }
+
+        if (request()->input('stremio_role') === 'streams') {
+            return $this->removeStremioStreamAddon($id);
+        }
+
         $current = $this->data($this->admin->streamFallback());
         $current['addons'] = collect($current['addons'] ?? [])
             ->reject(fn (array $addon): bool => (string) ($addon['id'] ?? '') === $id)
