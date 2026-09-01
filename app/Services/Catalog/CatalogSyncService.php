@@ -78,6 +78,15 @@ class CatalogSyncService
                 $snapshot->update(['checkpoint' => $checkpoint]);
             }
 
+            $stats = $snapshot->fresh()->stats ?? [];
+            $catalogItems = (int) ($stats['movies'] ?? 0) + (int) ($stats['tvshows'] ?? 0);
+
+            if ($catalogItems === 0) {
+                throw new \RuntimeException(
+                    'El proveedor devolvio un catalogo vacio; se conserva el snapshot anterior.',
+                );
+            }
+
             $snapshot->update([
                 'status' => 'success',
                 'finished_at' => now(),

@@ -244,6 +244,84 @@ class StremioCatalogSyncTest extends TestCase
         $this->assertContains('https://addon-catalog.test/stream/movie/custom-1.json?token=test', $urls);
     }
 
+    public function test_catalog_sync_does_not_import_stream_addon_catalogs(): void
+    {
+        app(SyncSettings::class)->put('stremio.catalog_enabled', true);
+        app(SyncSettings::class)->put('stremio.catalog_addons', [[
+            'id' => 'catalog-only',
+            'name' => 'Catálogo principal',
+            'base_url' => 'https://catalog-only.test',
+            'enabled' => true,
+            'priority' => 1,
+            'timeout_seconds' => 2,
+        ]]);
+        app(SyncSettings::class)->put('stremio.stream_addons', [[
+            'id' => 'stream-only',
+            'name' => 'Reproducción externa',
+            'base_url' => 'https://stream-only.test',
+            'enabled' => true,
+            'priority' => 1,
+            'timeout_seconds' => 2,
+        ]]);
+        Http::fake(function (Request $request) {
+            $url = $request->url();
+            if (str_contains($url, 'catalog-only.test') && str_ends_with($url, '/manifest.json')) {
+                return Http::response([
+                    'id' => 'catalog-only',
+                    'name' => 'Catálogo principal',
+                    'version' => '1.0.0',
+                    'resources' => ['catalog'],
+                    'types' => ['movie'],
+                    'catalogs' => [['type' => 'movie', 'id' => 'library']],
+                ], 200);
+            }
+            if (str_contains($url, 'catalog-only.test/catalog/movie/library.json')) {
+                return Http::response(['metas' => [['id' => 'movie-1', 'name' => 'Película principal']]], 200);
+            }
+
+            return Http::response([], 404);
+        });
+
+        $result = app(\App\Services\Catalog\StremioCatalogSyncService::class)->sync(true);
+
+        $this->assertSame('success', $result['status']);
+        $this->assertSame(1, $result['titles']);
+        Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), 'stream-only.test'));
+    }
+
+    public function test_empty_catalog_addon_does_not_deactivate_existing_titles(): void
+    {
+        $title = Title::factory()->create([
+            'source' => 'stremio',
+            'is_active' => true,
+        ]);
+        app(SyncSettings::class)->put('stremio.catalog_enabled', true);
+        app(SyncSettings::class)->put('stremio.catalog_addons', [[
+            'id' => 'empty-catalog',
+            'name' => 'Catálogo vacío',
+            'base_url' => 'https://empty-catalog.test',
+            'enabled' => true,
+            'priority' => 1,
+            'timeout_seconds' => 2,
+        ]]);
+        Http::fake([
+            'https://empty-catalog.test/manifest.json' => Http::response([
+                'id' => 'empty-catalog',
+                'name' => 'Catálogo vacío',
+                'version' => '1.0.0',
+                'resources' => ['catalog'],
+                'types' => ['movie'],
+                'catalogs' => [['type' => 'movie', 'id' => 'library']],
+            ], 200),
+            'https://empty-catalog.test/catalog/movie/library.json' => Http::response(['metas' => []], 200),
+        ]);
+
+        $result = app(\App\Services\Catalog\StremioCatalogSyncService::class)->sync(true);
+
+        $this->assertSame('partial', $result['status']);
+        $this->assertTrue((bool) $title->fresh()->is_active);
+    }
+
     private function fakeCatalogAddon(): void
     {
         Http::fake(function (Request $request) {

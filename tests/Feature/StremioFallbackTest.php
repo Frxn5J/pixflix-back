@@ -317,6 +317,70 @@ class StremioFallbackTest extends TestCase
         $this->assertDatabaseHas('settings', ['key' => 'stremio.primary', 'value' => 'true']);
     }
 
+    public function test_admin_can_configure_catalog_and_stream_addons_independently(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $token = $this->postJson('/api/v1/auth/login', [
+            'login' => $admin->email,
+            'password' => 'password',
+        ])->json('data.token');
+
+        $this->withToken($token)->putJson('/api/v1/admin/stremio/catalog', [
+            'enabled' => true,
+            'timeout_seconds' => 8,
+            'addons' => [[
+                'id' => 'catalog-only',
+                'name' => 'Catálogo',
+                'base_url' => 'https://catalog.test/manifest.json',
+                'enabled' => true,
+                'priority' => 1,
+            ]],
+        ])->assertOk()->assertJsonPath('data.addons.0.id', 'catalog-only');
+
+        $this->withToken($token)->putJson('/api/v1/admin/stremio/streams', [
+            'enabled' => true,
+            'primary' => true,
+            'timeout_seconds' => 8,
+            'cache_ttl_seconds' => 3600,
+            'languages' => ['Latino'],
+            'addons' => [[
+                'id' => 'stream-only',
+                'name' => 'Streams',
+                'base_url' => 'https://streams.test/manifest.json',
+                'enabled' => true,
+                'priority' => 1,
+            ]],
+        ])->assertOk()->assertJsonPath('data.addons.0.id', 'stream-only');
+
+        $this->assertDatabaseHas('settings', ['key' => 'stremio.catalog_addons']);
+        $this->assertDatabaseHas('settings', ['key' => 'stremio.stream_addons']);
+    }
+
+    public function test_catalog_addon_does_not_need_to_publish_streams(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $token = $this->postJson('/api/v1/auth/login', [
+            'login' => $admin->email,
+            'password' => 'password',
+        ])->json('data.token');
+        Http::fake([
+            'https://catalog-only.test/manifest.json' => Http::response([
+                'id' => 'catalog-only',
+                'name' => 'Catálogo',
+                'version' => '1.0.0',
+                'resources' => ['catalog'],
+                'types' => ['movie', 'series'],
+                'catalogs' => [['type' => 'movie', 'id' => 'library']],
+            ], 200),
+        ]);
+
+        $this->withToken($token)
+            ->postJson('/api/v1/admin/stremio/catalog/verify', ['base_url' => 'https://catalog-only.test'])
+            ->assertOk()
+            ->assertJsonPath('data.compatible', true)
+            ->assertJsonPath('data.role', 'catalog');
+    }
+
     public function test_admin_can_verify_a_manifest_without_persisting_the_result(): void
     {
         $admin = User::factory()->admin()->create();

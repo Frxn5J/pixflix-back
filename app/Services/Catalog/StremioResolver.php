@@ -54,11 +54,12 @@ class StremioResolver
         ?string $searchTitle = null,
         ?string $searchYear = null,
     ): array {
-        if (! (bool) $this->settings->get('stremio.enabled', config('pixflix.stremio.enabled', false))) {
+        $enabled = $this->settings->get('stremio.streams_enabled', config('pixflix.stremio.streams_enabled'));
+        if (! (bool) ($enabled ?? $this->settings->get('stremio.enabled', config('pixflix.stremio.enabled', false)))) {
             return [];
         }
 
-        $addons = $this->addons();
+        $addons = $this->streamAddons();
         $languages = $this->languages($requestedLanguage);
 
         foreach ($ids as $id) {
@@ -252,9 +253,12 @@ class StremioResolver
         return preg_replace('/[^a-z0-9]+/', ' ', $value) ?: '';
     }
 
-    private function addons(): array
+    private function streamAddons(): array
     {
-        $configured = $this->settings->get('stremio.addons', config('pixflix.stremio.addons', []));
+        $configured = $this->settings->get('stremio.stream_addons', config('pixflix.stremio.stream_addons', []));
+        if (! is_array($configured) || $configured === []) {
+            $configured = $this->settings->get('stremio.addons', config('pixflix.stremio.addons', []));
+        }
 
         if (! is_array($configured)) {
             return [];

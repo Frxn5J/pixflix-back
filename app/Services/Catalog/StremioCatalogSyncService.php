@@ -131,7 +131,7 @@ class StremioCatalogSyncService
             return;
         }
 
-        foreach ($this->addons() as $addon) {
+        foreach ($this->catalogAddons() as $addon) {
             try {
                 $response = Http::acceptJson()
                     ->timeout($this->timeout($addon))
@@ -222,7 +222,7 @@ class StremioCatalogSyncService
     {
         $result = $this->emptyResult();
         $items = [];
-        $addons = $this->addons();
+        $addons = $this->catalogAddons();
         $addonStats = [];
         $addonSeen = [];
         $maxItems = max(1, (int) config('pixflix.stremio.catalog_max_items', 500));
@@ -370,6 +370,10 @@ class StremioCatalogSyncService
 
         $result['addon_counts'] = array_values($addonStats);
 
+        if ($items === [] && ! $result['truncated'] && $result['errors'] === []) {
+            $result['errors'][] = 'Los addons de catálogo no devolvieron títulos; se conserva el catálogo anterior.';
+        }
+
         if ($items !== [] || (! $result['truncated'] && $result['errors'] === [])) {
             DB::transaction(function () use ($items, &$result): void {
                 $activeIds = [];
@@ -394,6 +398,11 @@ class StremioCatalogSyncService
                     $result['deactivated'] = Title::query()
                         ->where('source', 'stremio')
                         ->whereNotIn('id', $activeIds)
+                        ->update(['is_active' => false, 'updated_at' => now()]);
+
+                    Title::query()
+                        ->where('source', 'catalog')
+                        ->where('is_active', true)
                         ->update(['is_active' => false, 'updated_at' => now()]);
                 }
             });
@@ -544,19 +553,23 @@ class StremioCatalogSyncService
 
     private function isPrimary(): bool
     {
-        return $this->isEnabled()
-            && (bool) $this->settings->get('stremio.primary', config('pixflix.stremio.primary', false));
+        return $this->isEnabled() && $this->catalogAddons() !== [];
     }
 
     private function isEnabled(): bool
     {
-        return (bool) $this->settings->get('stremio.enabled', config('pixflix.stremio.enabled', false));
+        $enabled = $this->settings->get('stremio.catalog_enabled', config('pixflix.stremio.catalog_enabled'));
+
+        return (bool) ($enabled ?? $this->settings->get('stremio.enabled', config('pixflix.stremio.enabled', false)));
     }
 
     /** @return array<int, array<string, mixed>> */
-    private function addons(): array
+    private function catalogAddons(): array
     {
-        $configured = $this->settings->get('stremio.addons', config('pixflix.stremio.addons', []));
+        $configured = $this->settings->get('stremio.catalog_addons', config('pixflix.stremio.catalog_addons', []));
+        if (! is_array($configured) || $configured === []) {
+            $configured = $this->settings->get('stremio.addons', config('pixflix.stremio.addons', []));
+        }
 
         return is_array($configured)
             ? collect($configured)

@@ -203,6 +203,55 @@ class AdminWebController extends Controller
         return $this->forward('iptv-proxies', fn () => $this->admin->updateIptvProxies($request), 'Proxies guardados.');
     }
 
+    public function updateStremioCatalog(Request $request, StremioCatalogSyncService $sync): RedirectResponse
+    {
+        $request->merge([
+            'addons' => is_array($request->input('addons')) ? $request->input('addons') : [],
+        ]);
+
+        return $this->forward('stremio-catalog', fn () => $this->admin->updateStremioCatalog($request, $sync), 'Configuracion del catalogo Stremio guardada.');
+    }
+
+    public function addStremioCatalogAddon(Request $request, StremioAddonVerifier $verifier, StremioCatalogSyncService $sync): RedirectResponse
+    {
+        return $this->addStremioAddonTo('stremio-catalog', 'catalog', $request, $verifier, $sync);
+    }
+
+    public function removeStremioCatalogAddon(string $id, StremioCatalogSyncService $sync): RedirectResponse
+    {
+        return $this->removeStremioAddonFrom('stremio-catalog', 'catalog', $id, $sync);
+    }
+
+    public function syncStremioCatalog(StremioCatalogSyncService $sync): RedirectResponse
+    {
+        return $this->forward('stremio-catalog', fn () => $this->admin->syncStreamFallbackCatalog($sync), 'Catalogo Stremio importado.');
+    }
+
+    public function updateStremioStreams(Request $request): RedirectResponse
+    {
+        $languages = collect(explode(',', (string) $request->input('languages_csv', '')))
+            ->map(fn (string $language): string => trim($language))
+            ->filter()
+            ->values()
+            ->all();
+        $request->merge([
+            'languages' => $languages,
+            'addons' => is_array($request->input('addons')) ? $request->input('addons') : [],
+        ]);
+
+        return $this->forward('stremio-streams', fn () => $this->admin->updateStremioStreams($request), 'Fuentes de reproduccion Stremio guardadas.');
+    }
+
+    public function addStremioStreamAddon(Request $request, StremioAddonVerifier $verifier): RedirectResponse
+    {
+        return $this->addStremioAddonTo('stremio-streams', 'streams', $request, $verifier, null);
+    }
+
+    public function removeStremioStreamAddon(string $id): RedirectResponse
+    {
+        return $this->removeStremioAddonFrom('stremio-streams', 'streams', $id, null);
+    }
+
     public function addIptvProxy(Request $request): RedirectResponse
     {
         $validated = $request->validate([
@@ -337,11 +386,113 @@ class AdminWebController extends Controller
         return $this->redirectTo('trials')->with('trial_credentials', $this->data($response))->with('success', 'Cuenta de prueba creada.');
     }
 
+    private function addStremioAddonTo(
+        string $section,
+        string $role,
+        Request $request,
+        StremioAddonVerifier $verifier,
+        ?StremioCatalogSyncService $sync,
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+            'base_url' => ['required', 'url:http,https', 'max:2048'],
+            'priority' => ['required', 'integer', 'between:1,10000'],
+            'timeout_seconds' => ['required', 'integer', 'between:1,60'],
+        ]);
+        $verification = $verifier->verify($validated['base_url'], (int) $validated['timeout_seconds'], $role);
+
+        if (! ($verification['compatible'] ?? false)) {
+            return $this->redirectTo($section)
+                ->withInput()
+                ->with('verification', $verification)
+                ->withErrors(['base_url' => 'El addon no es compatible con la función seleccionada.']);
+        }
+
+        $current = $role === 'catalog'
+            ? $this->data($this->admin->stremioCatalog())
+            : $this->data($this->admin->stremioStreams());
+        $current['addons'][] = [
+            'id' => 'addon-'.Str::lower(Str::random(10)),
+            'name' => $validated['name'],
+            'base_url' => rtrim($validated['base_url'], '/'),
+            'enabled' => true,
+            'priority' => (int) $validated['priority'],
+            'timeout_seconds' => (int) $validated['timeout_seconds'],
+        ];
+
+        $payload = [
+            'enabled' => (bool) ($current['enabled'] ?? true),
+            'timeout_seconds' => (int) ($current['timeout_seconds'] ?? 10),
+            'addons' => $current['addons'],
+        ];
+        if ($role === 'streams') {
+            $payload += [
+                'primary' => (bool) ($current['primary'] ?? false),
+                'cache_ttl_seconds' => (int) ($current['cache_ttl_seconds'] ?? 1800),
+                'languages' => is_array($current['languages'] ?? null) ? $current['languages'] : [],
+            ];
+        }
+
+        try {
+            $response = $role === 'catalog'
+                ? $this->admin->updateStremioCatalog($this->syntheticRequest($payload), $sync ?? app(StremioCatalogSyncService::class))
+                : $this->admin->updateStremioStreams($this->syntheticRequest($payload));
+            $this->assertSuccessful($response);
+        } catch (Throwable $exception) {
+            Log::warning('Admin web could not install Stremio addon', ['exception' => $exception]);
+
+            return $this->redirectTo($section)->withInput()->with('verification', $verification)->withErrors(['admin' => $exception->getMessage()]);
+        }
+
+        return $this->redirectTo($section)->with('verification', $verification)->with('success', 'Addon verificado e instalado.');
+    }
+
+    private function removeStremioAddonFrom(
+        string $section,
+        string $role,
+        string $id,
+        ?StremioCatalogSyncService $sync,
+    ): RedirectResponse {
+        $current = $role === 'catalog'
+            ? $this->data($this->admin->stremioCatalog())
+            : $this->data($this->admin->stremioStreams());
+        $current['addons'] = collect($current['addons'] ?? [])
+            ->reject(fn (array $addon): bool => (string) ($addon['id'] ?? '') === $id)
+            ->values()
+            ->all();
+        if ($current['addons'] === []) {
+            $current['enabled'] = false;
+            if ($role === 'streams') {
+                $current['primary'] = false;
+            }
+        }
+
+        $payload = [
+            'enabled' => (bool) ($current['enabled'] ?? false),
+            'timeout_seconds' => (int) ($current['timeout_seconds'] ?? 10),
+            'addons' => $current['addons'],
+        ];
+        if ($role === 'streams') {
+            $payload += [
+                'primary' => (bool) ($current['primary'] ?? false),
+                'cache_ttl_seconds' => (int) ($current['cache_ttl_seconds'] ?? 1800),
+                'languages' => is_array($current['languages'] ?? null) ? $current['languages'] : [],
+            ];
+        }
+
+        $operation = $role === 'catalog'
+            ? fn () => $this->admin->updateStremioCatalog($this->syntheticRequest($payload), $sync ?? app(StremioCatalogSyncService::class))
+            : fn () => $this->admin->updateStremioStreams($this->syntheticRequest($payload));
+
+        return $this->forward($section, $operation, 'Addon eliminado.');
+    }
+
     private function section(string $section): string
     {
         return in_array($section, [
             'overview', 'users', 'subscriptions', 'plans', 'channels',
-            'iptv-playlists', 'iptv-vod-playlists', 'iptv-proxies', 'fallback', 'trials',
+            'iptv-playlists', 'iptv-vod-playlists', 'iptv-proxies', 'fallback',
+            'stremio-catalog', 'stremio-streams', 'trials',
         ], true) ? $section : 'overview';
     }
 

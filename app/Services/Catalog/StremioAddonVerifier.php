@@ -7,8 +7,9 @@ use Throwable;
 
 class StremioAddonVerifier
 {
-    public function verify(string $url, int $timeoutSeconds = 10): array
+    public function verify(string $url, int $timeoutSeconds = 10, string $role = 'both'): array
     {
+        $role = in_array($role, ['catalog', 'streams', 'both'], true) ? $role : 'both';
         $manifestUrl = $this->manifestUrl($url);
 
         try {
@@ -63,12 +64,14 @@ class StremioAddonVerifier
         $hasCatalog = in_array('catalog', $resources, true) || $catalogs !== [];
         $contentTypes = array_values(array_intersect($supportedTypes, ['movie', 'series', 'channel', 'tv']));
         $spanishSignal = $this->hasSpanishSignal($manifest, $catalogs);
+        $requiresStream = in_array($role, ['streams', 'both'], true);
+        $requiresCatalog = in_array($role, ['catalog', 'both'], true);
 
-        if (! $hasStream) {
+        if ($requiresStream && ! $hasStream) {
             $warnings[] = 'No declara el recurso stream; no podrá resolver reproducción.';
         }
 
-        if (! $hasCatalog) {
+        if ($requiresCatalog && ! $hasCatalog) {
             $warnings[] = 'No declara catálogos; solo se podrá usar si recibe IDs externos compatibles.';
         }
 
@@ -78,9 +81,13 @@ class StremioAddonVerifier
 
         return [
             'valid' => $errors === [],
-            'compatible' => $errors === [] && $hasStream && $contentTypes !== [],
+            'compatible' => $errors === []
+                && $contentTypes !== []
+                && (! $requiresStream || $hasStream)
+                && (! $requiresCatalog || $hasCatalog),
             'reachable' => true,
             'manifest_url' => $manifestUrl,
+            'role' => $role,
             'manifest' => [
                 'id' => $manifest['id'] ?? null,
                 'name' => $manifest['name'] ?? null,

@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\Catalog\CatalogSyncService;
+use App\Services\SyncSettings;
 use Illuminate\Console\Command;
 use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Facades\Cache;
@@ -18,11 +19,18 @@ class SyncCatalogCommand extends Command
 
     protected $description = 'Sincroniza el catalogo con snapshot versionado y reanudable';
 
-    public function handle(CatalogSyncService $sync): int
+    public function handle(CatalogSyncService $sync, SyncSettings $settings): int
     {
         if ($this->option('clear-lock')) {
             Cache::lock('pixflix:sync:catalog')->forceRelease();
             $this->info('Lock de sincronizacion liberado.');
+        }
+
+        if ((bool) ($settings->get('stremio.catalog_enabled', config('pixflix.stremio.catalog_enabled'))
+            ?? $settings->get('stremio.enabled', config('pixflix.stremio.enabled', false)))) {
+            $this->info('El catalogo principal es Stremio; se omite la sincronizacion del proveedor legacy.');
+
+            return self::SUCCESS;
         }
 
         if ($this->option('debug')) {

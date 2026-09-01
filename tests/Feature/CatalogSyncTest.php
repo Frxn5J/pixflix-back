@@ -116,6 +116,28 @@ class CatalogSyncTest extends TestCase
         $this->assertNull($normalized['poster']);
     }
 
+    public function test_empty_upstream_does_not_replace_the_last_successful_snapshot(): void
+    {
+        CatalogSnapshot::factory()->create(['version' => 1, 'status' => 'success']);
+        Title::factory()->create([
+            'slug' => 'catalogo-anterior',
+            'snapshot_version' => 1,
+        ]);
+        Http::fake(fn () => Http::response([
+            'items' => [],
+            'totalPages' => 1,
+        ], 200));
+
+        $result = app(CatalogSyncService::class)->run();
+
+        $this->assertSame('partial', $result['status']);
+        $this->assertSame(1, CatalogSnapshot::current()?->version);
+        $this->assertDatabaseHas('catalog_snapshots', [
+            'version' => 2,
+            'status' => 'partial',
+        ]);
+    }
+
     public function test_client_uses_fallback_when_primary_is_unavailable(): void
     {
         config()->set('pixflix.catalog.fallback_url', 'https://fallback.test');

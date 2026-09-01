@@ -94,7 +94,8 @@ class AdminWebAuthTest extends TestCase
 
         foreach ([
             'overview', 'users', 'subscriptions', 'plans', 'channels',
-            'iptv-playlists', 'iptv-vod-playlists', 'iptv-proxies', 'fallback', 'trials',
+            'iptv-playlists', 'iptv-vod-playlists', 'iptv-proxies', 'fallback',
+            'stremio-catalog', 'stremio-streams', 'trials',
         ] as $section) {
             $this->actingAs($admin, 'web')
                 ->get('/admin?section='.$section)

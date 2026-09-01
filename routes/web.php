@@ -59,5 +59,13 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'admin.web'])->group
     Route::post('/stream-fallback/verify-content', [AdminWebController::class, 'verifyStremioContent'])->name('stream-fallback.verify-content');
     Route::post('/stream-fallback/sync-catalog', [AdminWebController::class, 'syncStreamFallbackCatalog'])->name('stream-fallback.sync-catalog');
 
+    Route::put('/stremio/catalog', [AdminWebController::class, 'updateStremioCatalog'])->name('stremio-catalog.update');
+    Route::post('/stremio/catalog/addon', [AdminWebController::class, 'addStremioCatalogAddon'])->name('stremio-catalog.addon');
+    Route::delete('/stremio/catalog/addon/{id}', [AdminWebController::class, 'removeStremioCatalogAddon'])->name('stremio-catalog.addon.remove');
+    Route::post('/stremio/catalog/sync', [AdminWebController::class, 'syncStremioCatalog'])->name('stremio-catalog.sync');
+    Route::put('/stremio/streams', [AdminWebController::class, 'updateStremioStreams'])->name('stremio-streams.update');
+    Route::post('/stremio/streams/addon', [AdminWebController::class, 'addStremioStreamAddon'])->name('stremio-streams.addon');
+    Route::delete('/stremio/streams/addon/{id}', [AdminWebController::class, 'removeStremioStreamAddon'])->name('stremio-streams.addon.remove');
+
     Route::post('/trials', [AdminWebController::class, 'createTrial'])->name('trials.store');
 });

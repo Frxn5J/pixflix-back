@@ -485,6 +485,118 @@ class AdminController extends Controller
         return response()->json(['data' => $this->streamFallbackData()]);
     }
 
+    public function stremioCatalog(): JsonResponse
+    {
+        return response()->json(['data' => $this->stremioCatalogData()]);
+    }
+
+    public function updateStremioCatalog(Request $request, StremioCatalogSyncService $sync): JsonResponse
+    {
+        $validated = $request->validate([
+            'enabled' => ['required', 'boolean'],
+            'timeout_seconds' => ['required', 'integer', 'between:1,60'],
+            'addons' => ['present', 'array', 'max:100'],
+            'addons.*.id' => ['nullable', 'string', 'max:100'],
+            'addons.*.name' => ['required', 'string', 'max:120'],
+            'addons.*.base_url' => ['required', 'url:http,https', 'max:2048'],
+            'addons.*.enabled' => ['required', 'boolean'],
+            'addons.*.priority' => ['required', 'integer', 'between:1,10000'],
+            'addons.*.timeout_seconds' => ['nullable', 'integer', 'between:1,60'],
+        ]);
+
+        $addons = $this->normalizeStremioAddons($validated['addons'], (int) $validated['timeout_seconds']);
+        if ($validated['enabled'] && ! collect($addons)->contains(fn (array $addon): bool => $addon['enabled'] === true)) {
+            throw ValidationException::withMessages([
+                'addons' => 'Agrega y activa al menos un addon Stremio de catálogo.',
+            ]);
+        }
+
+        $this->settings->put('stremio.catalog_enabled', (bool) $validated['enabled']);
+        $this->settings->put('stremio.catalog_addons', $addons);
+        $sync->invalidate();
+
+        return response()->json(['data' => $this->stremioCatalogData()]);
+    }
+
+    public function stremioStreams(): JsonResponse
+    {
+        return response()->json(['data' => $this->stremioStreamsData()]);
+    }
+
+    public function updateStremioStreams(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'enabled' => ['required', 'boolean'],
+            'primary' => ['sometimes', 'boolean'],
+            'timeout_seconds' => ['required', 'integer', 'between:1,60'],
+            'cache_ttl_seconds' => ['required', 'integer', 'between:60,604800'],
+            'languages' => ['present', 'array', 'max:20'],
+            'languages.*' => ['string', 'max:40'],
+            'addons' => ['present', 'array', 'max:100'],
+            'addons.*.id' => ['nullable', 'string', 'max:100'],
+            'addons.*.name' => ['required', 'string', 'max:120'],
+            'addons.*.base_url' => ['required', 'url:http,https', 'max:2048'],
+            'addons.*.enabled' => ['required', 'boolean'],
+            'addons.*.priority' => ['required', 'integer', 'between:1,10000'],
+            'addons.*.timeout_seconds' => ['nullable', 'integer', 'between:1,60'],
+        ]);
+
+        $addons = $this->normalizeStremioAddons($validated['addons'], (int) $validated['timeout_seconds']);
+        $primary = (bool) ($validated['primary'] ?? $this->settings->get(
+            'stremio.primary',
+            config('pixflix.stremio.primary', false),
+        ));
+
+        if ($primary && ! $validated['enabled']) {
+            throw ValidationException::withMessages([
+                'enabled' => 'Activa los addons de reproducción antes de seleccionarlos como fuente principal.',
+            ]);
+        }
+
+        if ($primary && ! collect($addons)->contains(fn (array $addon): bool => $addon['enabled'] === true)) {
+            throw ValidationException::withMessages([
+                'addons' => 'Agrega y activa al menos un addon Stremio de reproducción.',
+            ]);
+        }
+
+        $this->settings->put('stremio.streams_enabled', (bool) $validated['enabled']);
+        $this->settings->put('stremio.primary', $primary);
+        $this->settings->put('stremio.timeout_seconds', (int) $validated['timeout_seconds']);
+        $this->settings->put('stremio.cache_ttl_seconds', (int) $validated['cache_ttl_seconds']);
+        $this->settings->put('stremio.languages', array_values(array_filter(array_map('trim', $validated['languages']))));
+        $this->settings->put('stremio.stream_addons', $addons);
+
+        return response()->json(['data' => $this->stremioStreamsData()]);
+    }
+
+    public function verifyStremioCatalogAddon(Request $request, StremioAddonVerifier $verifier): JsonResponse
+    {
+        $validated = $request->validate([
+            'base_url' => ['required', 'url:http,https', 'max:2048'],
+            'timeout_seconds' => ['sometimes', 'integer', 'between:1,60'],
+        ]);
+
+        return response()->json(['data' => $verifier->verify(
+            $validated['base_url'],
+            (int) ($validated['timeout_seconds'] ?? config('pixflix.stremio.timeout_seconds', 10)),
+            'catalog',
+        )]);
+    }
+
+    public function verifyStremioStreamAddon(Request $request, StremioAddonVerifier $verifier): JsonResponse
+    {
+        $validated = $request->validate([
+            'base_url' => ['required', 'url:http,https', 'max:2048'],
+            'timeout_seconds' => ['sometimes', 'integer', 'between:1,60'],
+        ]);
+
+        return response()->json(['data' => $verifier->verify(
+            $validated['base_url'],
+            (int) ($validated['timeout_seconds'] ?? config('pixflix.stremio.timeout_seconds', 10)),
+            'streams',
+        )]);
+    }
+
     public function updateStreamFallback(Request $request, StremioCatalogSyncService $sync): JsonResponse
     {
         $validated = $request->validate([
@@ -534,11 +646,13 @@ class AdminController extends Controller
         }
 
         $this->settings->put('stremio.enabled', (bool) $validated['enabled']);
+        $this->settings->put('stremio.streams_enabled', (bool) $validated['enabled']);
         $this->settings->put('stremio.primary', $primary);
         $this->settings->put('stremio.timeout_seconds', (int) $validated['timeout_seconds']);
         $this->settings->put('stremio.cache_ttl_seconds', (int) $validated['cache_ttl_seconds']);
         $this->settings->put('stremio.languages', array_values(array_filter(array_map('trim', $validated['languages']))));
         $this->settings->put('stremio.addons', $addons);
+        $this->settings->put('stremio.stream_addons', $addons);
         $sync->invalidate();
 
         return response()->json(['data' => $this->streamFallbackData()]);
@@ -750,43 +864,97 @@ class AdminController extends Controller
         return $value === '' ? null : strtolower($value);
     }
 
-    private function streamFallbackData(): array
+    /** @param array<int, array<string, mixed>> $addons */
+    private function normalizeStremioAddons(array $addons, int $defaultTimeout): array
     {
-        $addons = $this->settings->get('stremio.addons', config('pixflix.stremio.addons', []));
-        $configuredAddons = is_array($addons)
-            ? array_values(array_filter($addons, 'is_array'))
-            : [];
+        return collect($addons)
+            ->map(fn (array $addon, int $index): array => [
+                'id' => trim((string) ($addon['id'] ?? 'addon-'.($index + 1))),
+                'name' => trim((string) ($addon['name'] ?? 'Addon Stremio')) ?: 'Addon Stremio',
+                'base_url' => rtrim(trim((string) $addon['base_url']), '/'),
+                'enabled' => (bool) ($addon['enabled'] ?? true),
+                'priority' => (int) ($addon['priority'] ?? 100),
+                'timeout_seconds' => (int) ($addon['timeout_seconds'] ?? $defaultTimeout),
+            ])
+            ->sortBy('priority')
+            ->values()
+            ->all();
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function configuredStremioAddons(string $key): array
+    {
+        $addons = $this->settings->get('stremio.'.$key, config('pixflix.stremio.'.$key, []));
+        if (! is_array($addons) || $addons === []) {
+            $addons = $this->settings->get('stremio.addons', config('pixflix.stremio.addons', []));
+        }
+
+        return is_array($addons) ? array_values(array_filter($addons, 'is_array')) : [];
+    }
+
+    private function stremioCatalogData(): array
+    {
+        $addons = $this->configuredStremioAddons('catalog_addons');
         $lastSync = Cache::get('pixflix:stremio:catalog:last-sync');
         $lastCounts = is_array($lastSync) && is_array($lastSync['addon_counts'] ?? null)
             ? collect(array_filter($lastSync['addon_counts'], 'is_array'))->keyBy(fn (array $count): string => (string) ($count['id'] ?? ''))
             : collect();
-        $addonCounts = collect($configuredAddons)
-            ->map(function (array $addon) use ($lastCounts): array {
-                $id = trim((string) ($addon['id'] ?? ''));
-                $count = $lastCounts->get($id, []);
-
-                return [
-                    'id' => $id,
-                    'name' => trim((string) ($addon['name'] ?? 'Addon Stremio')) ?: 'Addon Stremio',
-                    'enabled' => (bool) ($addon['enabled'] ?? true),
-                    'movies' => (int) ($count['movies'] ?? 0),
-                    'series' => (int) ($count['series'] ?? 0),
-                    'titles' => (int) ($count['titles'] ?? 0),
-                    'catalogs' => (int) ($count['catalogs'] ?? 0),
-                ];
-            })
-            ->values()
-            ->all();
 
         return [
-            'enabled' => (bool) $this->settings->get('stremio.enabled', config('pixflix.stremio.enabled', false)),
+            'enabled' => (bool) ($this->settings->get('stremio.catalog_enabled', config('pixflix.stremio.catalog_enabled'))
+                ?? $this->settings->get('stremio.enabled', config('pixflix.stremio.enabled', false))),
+            'timeout_seconds' => (int) $this->settings->get('stremio.timeout_seconds', config('pixflix.stremio.timeout_seconds', 10)),
+            'addons' => $addons,
+            'addon_counts' => collect($addons)
+                ->map(function (array $addon) use ($lastCounts): array {
+                    $id = trim((string) ($addon['id'] ?? ''));
+                    $count = $lastCounts->get($id, []);
+
+                    return [
+                        'id' => $id,
+                        'name' => trim((string) ($addon['name'] ?? 'Addon Stremio')) ?: 'Addon Stremio',
+                        'enabled' => (bool) ($addon['enabled'] ?? true),
+                        'movies' => (int) ($count['movies'] ?? 0),
+                        'series' => (int) ($count['series'] ?? 0),
+                        'titles' => (int) ($count['titles'] ?? 0),
+                        'catalogs' => (int) ($count['catalogs'] ?? 0),
+                    ];
+                })
+                ->values()
+                ->all(),
+            'catalog_last_sync' => is_array($lastSync) ? ($lastSync['finished_at'] ?? null) : null,
+        ];
+    }
+
+    private function stremioStreamsData(): array
+    {
+        return [
+            'enabled' => (bool) ($this->settings->get('stremio.streams_enabled', config('pixflix.stremio.streams_enabled'))
+                ?? $this->settings->get('stremio.enabled', config('pixflix.stremio.enabled', false))),
             'primary' => (bool) $this->settings->get('stremio.primary', config('pixflix.stremio.primary', false)),
             'timeout_seconds' => (int) $this->settings->get('stremio.timeout_seconds', config('pixflix.stremio.timeout_seconds', 10)),
             'cache_ttl_seconds' => (int) $this->settings->get('stremio.cache_ttl_seconds', config('pixflix.stremio.cache_ttl_seconds', 1800)),
             'languages' => $this->settings->get('stremio.languages', config('pixflix.stremio.languages', [])),
-            'addons' => is_array($addons) ? array_values($addons) : [],
-            'addon_counts' => $addonCounts,
-            'catalog_last_sync' => is_array($lastSync) ? ($lastSync['finished_at'] ?? null) : null,
+            'addons' => $this->configuredStremioAddons('stream_addons'),
+        ];
+    }
+
+    private function streamFallbackData(): array
+    {
+        $catalog = $this->stremioCatalogData();
+        $streams = $this->stremioStreamsData();
+
+        return [
+            'enabled' => $streams['enabled'],
+            'primary' => $streams['primary'],
+            'timeout_seconds' => $streams['timeout_seconds'],
+            'cache_ttl_seconds' => $streams['cache_ttl_seconds'],
+            'languages' => $streams['languages'],
+            'addons' => $streams['addons'],
+            'addon_counts' => $catalog['addon_counts'],
+            'catalog_last_sync' => $catalog['catalog_last_sync'],
+            'catalog' => $catalog,
+            'streams' => $streams,
         ];
     }
 }

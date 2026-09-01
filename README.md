@@ -195,9 +195,15 @@ Las películas se enriquecen automáticamente con TMDB al sincronizar. Configura
 `PIXFLIX_TMDB_API_KEY` o `PIXFLIX_TMDB_ACCESS_TOKEN` para obtener sinopsis,
 duración, director, reparto, géneros, valoración, póster y enlace de TMDB.
 
-Cuando Stremio se selecciona como fuente principal, `Fuentes de streams`
-importa también sus títulos al catálogo. `Importar catálogo` permite repetir la
-carga manualmente; las temporadas y episodios se completan al abrir una serie.
+Stremio se configura en dos grupos independientes desde el panel administrativo:
+`Stremio catálogo` importa los títulos y metadatos, mientras `Stremio
+reproducción` consulta addons de distintas procedencias para resolver los
+streams. Los addons de reproducción no importan ni contabilizan sus catálogos.
+La URL de `https://stremio-addons.net/addons/streaming-catalogs` es un directorio
+para localizar addons, no un manifest consumible; en Pixflix debe registrarse la
+URL de la instancia instalada o su `manifest.json`. `Importar catálogo` permite
+repetir la carga manualmente; las temporadas y episodios se completan al abrir
+una serie.
 
 ## Actualización
 
