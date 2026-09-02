@@ -15,6 +15,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Throwable;
 
@@ -488,6 +489,10 @@ class AdminWebController extends Controller
         try {
             $response = $operation();
             $this->assertSuccessful($response);
+        } catch (ValidationException $exception) {
+            // Preserve field-level errors (e.g. validation.alpha_dash) so the
+            // panel shows the exact input problem instead of a generic key.
+            return $this->redirectTo($section)->withInput()->withErrors($exception->errors());
         } catch (Throwable $exception) {
             Log::warning('Admin web action failed', [
                 'section' => $section,

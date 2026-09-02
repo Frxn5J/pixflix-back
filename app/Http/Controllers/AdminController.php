@@ -82,9 +82,11 @@ class AdminController extends Controller
             'name' => ['sometimes', 'required', 'string', 'max:120'],
             'email' => ['sometimes', 'nullable', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
             'phone' => ['sometimes', 'nullable', 'string', 'max:40', Rule::unique('users', 'phone')->ignore($user->id)],
-            'username' => ['sometimes', 'nullable', 'alpha_dash', 'max:60', Rule::unique('users', 'username')->ignore($user->id)],
+            'username' => ['sometimes', 'nullable', 'alpha_dash:ascii', 'max:60', Rule::unique('users', 'username')->ignore($user->id)],
             'role' => ['sometimes', Rule::in(['admin', 'agent', 'subscriber'])],
             'password' => ['sometimes', 'nullable', 'string', 'min:8', 'max:120'],
+        ], [
+            'username.alpha_dash' => 'El usuario solo puede contener letras, números, guiones (-) y guiones bajos (_), sin espacios ni puntos ni acentos. Ej: juan_perez, cliente-01',
         ]);
         $this->assertIdentityFieldsAvailable($validated, $user);
 
@@ -103,13 +105,35 @@ class AdminController extends Controller
             'name' => ['required', 'string', 'max:120'],
             'email' => ['nullable', 'email', 'max:255', Rule::unique('users', 'email')],
             'phone' => ['nullable', 'string', 'max:40', Rule::unique('users', 'phone')],
-            'username' => ['required', 'alpha_dash', 'max:60', Rule::unique('users', 'username')],
+            'username' => ['required', 'alpha_dash:ascii', 'max:60', Rule::unique('users', 'username')],
             'password' => ['required', 'string', 'min:8', 'max:120', 'confirmed'],
             'plan_id' => ['nullable', 'integer', Rule::exists('plans', 'id')],
             'duration_days' => ['sometimes', 'integer', 'between:1,3650'],
             'group_number' => ['sometimes', 'integer', 'between:1,7'],
             'custom_price' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:999999.99'],
+        ], [
+            'name.required' => 'El nombre es obligatorio.',
+            'username.required' => 'El usuario es obligatorio.',
+            'username.alpha_dash' => 'El usuario solo puede contener letras, números, guiones (-) y guiones bajos (_), sin espacios ni puntos ni acentos. Ej: juan_perez, cliente-01',
+            'username.max' => 'El usuario no puede superar 60 caracteres.',
+            'username.unique' => 'Ese usuario ya está en uso por otra cuenta.',
+            'email.email' => 'El correo no tiene un formato válido.',
+            'email.unique' => 'Ese correo ya está en uso.',
+            'phone.unique' => 'Ese teléfono ya está en uso.',
+            'password.required' => 'La contraseña es obligatoria.',
+            'password.min' => 'La contraseña debe tener al menos 8 caracteres.',
+            'password.confirmed' => 'La confirmación de contraseña no coincide.',
         ]);
+        // Normaliza el usuario antes de las comprobaciones cruzadas (evita "Juan Pérez" → alpha_dash)
+        if (isset($validated['username'])) {
+            $validated['username'] = trim((string) $validated['username']);
+        }
+        if (isset($validated['email']) && $validated['email'] !== null) {
+            $validated['email'] = trim((string) $validated['email']) ?: null;
+        }
+        if (isset($validated['phone']) && $validated['phone'] !== null) {
+            $validated['phone'] = trim((string) $validated['phone']) ?: null;
+        }
         $this->assertIdentityFieldsAvailable($validated);
 
         $createdBy = $request->user()?->id;
