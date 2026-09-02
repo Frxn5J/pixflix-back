@@ -10,7 +10,7 @@ class EnsureAdminWeb
 {
     public function handle(Request $request, Closure $next): Response
     {
-        abort_unless($request->user()?->role === 'admin', 403, 'Solo un administrador puede acceder a este panel.');
+        abort_unless(in_array($request->user()?->role, ['admin', 'agent'], true), 403, 'Solo personal autorizado puede acceder a este panel.');
 
         return $next($request);
     }

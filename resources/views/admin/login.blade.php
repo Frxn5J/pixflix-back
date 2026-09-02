@@ -30,7 +30,7 @@
             <label class="remember"><input type="checkbox" name="remember" value="1" @checked(old('remember'))> Mantener la sesion iniciada</label>
             <button type="submit">Entrar al panel</button>
         </form>
-        <p class="note">Los usuarios, agentes y suscriptores no pueden acceder a este panel.</p>
+        <p class="note">Solo personal autorizado (admin y agente) puede acceder. Los suscriptores no tienen acceso a este panel.</p>
     </section>
 </div>
 </body>

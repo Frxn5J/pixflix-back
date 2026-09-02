@@ -13,7 +13,7 @@ class AdminWebAuthController extends Controller
 {
     public function showLogin(): View|RedirectResponse
     {
-        if (Auth::guard('web')->check() && Auth::user()?->role === 'admin') {
+        if (Auth::guard('web')->check() && in_array(Auth::user()?->role, ['admin', 'agent'], true)) {
             return redirect()->route('admin.dashboard');
         }
 
@@ -40,11 +40,11 @@ class AdminWebAuthController extends Controller
             ->first();
 
         if ($user === null
-            || $user->role !== 'admin'
+            || ! in_array($user->role, ['admin', 'agent'], true)
             || ! Hash::check($validated['password'], $user->password)) {
             return back()
                 ->withInput($request->only('login', 'remember'))
-                ->withErrors(['login' => 'Las credenciales no son validas o no pertenecen a un administrador.']);
+                ->withErrors(['login' => 'Las credenciales no son validas o no pertenecen a personal autorizado (admin/agente).']);
         }
 
         Auth::guard('web')->login($user, (bool) ($validated['remember'] ?? false));

@@ -355,9 +355,23 @@ class AdminWebController extends Controller
 
     public function createTrial(Request $request): RedirectResponse
     {
-        $response = app(TrialController::class)->store($request);
+        try {
+            $response = app(TrialController::class)->store($request);
+        } catch (Throwable $exception) {
+            Log::warning('Admin web trial creation failed', ['exception' => $exception]);
 
-        return $this->redirectTo('trials')->with('trial_credentials', $this->data($response))->with('success', 'Cuenta de prueba creada.');
+            return $this->redirectTo('trials')->withInput()->withErrors(['trial' => $exception->getMessage()]);
+        }
+
+        try {
+            $credentials = $this->data($response);
+        } catch (Throwable $exception) {
+            Log::warning('Admin web trial creation response invalid', ['exception' => $exception]);
+
+            return $this->redirectTo('trials')->withInput()->withErrors(['trial' => $exception->getMessage()]);
+        }
+
+        return $this->redirectTo('trials')->with('trial_credentials', $credentials)->with('success', 'Cuenta de prueba creada.');
     }
 
     private function addStremioAddonTo(

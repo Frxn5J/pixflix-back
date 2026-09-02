@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Exceptions\ApiException;
 use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\User;
@@ -10,6 +9,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class TrialController extends Controller
 {
@@ -26,7 +26,13 @@ class TrialController extends Controller
         $planId = config('pixflix.trial.plan_id');
 
         if ($planId !== null && ! Plan::query()->whereKey($planId)->exists()) {
-            throw new ApiException('validation_error', 'El plan de prueba no existe.', 422);
+            throw ValidationException::withMessages([
+                'plan_id' => 'El plan de prueba configurado no existe. Configura un plan válido o deja la suscripción de prueba sin plan.',
+            ]);
+        }
+        // If trial plan is not configured, fall back to first active plan or null
+        if ($planId === null) {
+            $planId = Plan::query()->where('is_active', true)->orderBy('id')->value('id');
         }
 
         $user = User::query()->create([

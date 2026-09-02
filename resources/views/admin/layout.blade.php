@@ -101,7 +101,7 @@
             <span class="brand-copy">PIXFLIX <small>ADMINISTRACION EN LARAVEL</small></span>
         </a>
         <div class="admin-user">
-            <span>{{ $admin->name ?: $admin->username ?: $admin->email }}</span>
+            <span>{{ $admin->name ?: $admin->username ?: $admin->email }} · {{ $admin->role === 'admin' ? 'Admin' : 'Agente' }}</span>
             <form method="POST" action="{{ route('admin.logout') }}">
                 @csrf
                 <button class="logout-button" type="submit">Cerrar sesion</button>
