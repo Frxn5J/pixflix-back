@@ -2,8 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\AdminController;
 use App\Models\Setting;
 use App\Models\User;
+use App\Services\Iptv\IptvStreamVerifier;
+use App\Services\IptvOrg\IptvOrgSyncService;
 use App\Services\SyncProgressService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
@@ -153,5 +156,29 @@ class AdminWebAuthTest extends TestCase
             ->assertJsonPath('data.percentage', 50);
 
         $progress->complete($state['id']);
+    }
+
+    public function test_admin_web_iptv_sync_passes_the_stream_verifier(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $controller = \Mockery::mock(AdminController::class);
+        $controller->shouldReceive('syncIptvPlaylists')
+            ->once()
+            ->with(
+                \Mockery::type(IptvOrgSyncService::class),
+                \Mockery::type(IptvStreamVerifier::class),
+            )
+            ->andReturn(response()->json(['data' => [
+                'queued' => true,
+                'sync_id' => 'sync-iptv-test',
+                'sync_type' => 'iptv',
+            ]], 202));
+        $this->app->instance(AdminController::class, $controller);
+
+        $this->actingAs($admin, 'web')
+            ->post('/admin/iptv-playlists/sync')
+            ->assertRedirect('/admin?section=iptv-playlists')
+            ->assertSessionHas('success', 'Sincronizacion IPTV solicitada.')
+            ->assertSessionHas('sync_id', 'sync-iptv-test');
     }
 }

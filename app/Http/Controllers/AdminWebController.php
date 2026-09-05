@@ -7,6 +7,7 @@ use App\Services\Catalog\StremioCatalogSyncService;
 use App\Services\Catalog\StremioContentVerifier;
 use App\Services\Iptv\IptvProxyPool;
 use App\Services\Iptv\IptvResourceSyncService;
+use App\Services\Iptv\IptvStreamVerifier;
 use App\Services\IptvOrg\IptvOrgSyncService;
 use App\Services\SyncProgressService;
 use App\Services\SyncSettings;
@@ -135,9 +136,9 @@ class AdminWebController extends Controller
         ])), 'Lista IPTV eliminada.');
     }
 
-    public function syncIptvPlaylists(IptvOrgSyncService $sync): RedirectResponse
+    public function syncIptvPlaylists(IptvOrgSyncService $sync, IptvStreamVerifier $verifier): RedirectResponse
     {
-        return $this->forward('iptv-playlists', fn () => $this->admin->syncIptvPlaylists($sync), 'Sincronizacion IPTV solicitada.');
+        return $this->forward('iptv-playlists', fn () => $this->admin->syncIptvPlaylists($sync, $verifier), 'Sincronizacion IPTV solicitada.');
     }
 
     public function refreshIptvResources(IptvResourceSyncService $sync): RedirectResponse
