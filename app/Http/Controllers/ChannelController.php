@@ -208,6 +208,7 @@ class ChannelController extends Controller
                 // available proxy URLs travel with the stream metadata.
                 'hls' => $channel->stream_url,
                 'mp4' => null,
+                'headers' => $channel->stream_headers ?? [],
                 'proxy' => $this->proxyPool->playbackConfig($channel->use_proxy),
             ] : null,
             'is_available' => $channel->stream_url !== null,

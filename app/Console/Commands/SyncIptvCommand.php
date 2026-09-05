@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Services\Iptv\IptvStreamVerifier;
 use App\Services\IptvOrg\IptvOrgSyncService;
 use Illuminate\Console\Command;
 use Throwable;
@@ -15,12 +16,16 @@ class SyncIptvCommand extends Command
 
     protected $description = 'Sincroniza canales y streams publicos desde una playlist M3U de iptv-org';
 
-    public function handle(IptvOrgSyncService $sync): int
+    public function handle(IptvOrgSyncService $sync, IptvStreamVerifier $verifier): int
     {
         try {
             $result = $sync->run(
                 $this->option('country') !== null ? (string) $this->option('country') : config('pixflix.iptv.country'),
                 $this->option('language') !== null ? (string) $this->option('language') : null,
+                $this->option('limit') !== null ? (int) $this->option('limit') : config('pixflix.iptv.max_channels'),
+            );
+            $result['verification'] = $verifier->run(
+                $this->option('country') !== null ? (string) $this->option('country') : config('pixflix.iptv.country'),
                 $this->option('limit') !== null ? (int) $this->option('limit') : config('pixflix.iptv.max_channels'),
             );
         } catch (Throwable $exception) {
@@ -34,6 +39,13 @@ class SyncIptvCommand extends Command
             $result['channels'],
             $result['streams'],
             $result['deactivated'],
+        ));
+        $verification = $result['verification'];
+        $this->info(sprintf(
+            'Verificacion IPTV: %d revisados, %d saludables, %d desactivados.',
+            $verification['checked'],
+            $verification['healthy'],
+            $verification['deactivated'],
         ));
 
         return self::SUCCESS;

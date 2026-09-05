@@ -21,6 +21,32 @@ https://example.test/news.m3u8
 #EXTINF:-1 tvg-id="Closed.mx@SD" group-title="General",Cerrado
 https://example.test/closed.m3u8
 M3U),
+            'https://example.test/news.m3u8' => Http::response(
+                "#EXTM3U\n#EXTINF:6,\nhttps://example.test/news.ts\n",
+                200,
+                ['Access-Control-Allow-Origin' => '*'],
+            ),
+            'https://example.test/closed.m3u8' => Http::response(
+                "#EXTM3U\n#EXTINF:6,\nhttps://example.test/closed.ts\n",
+                200,
+                ['Access-Control-Allow-Origin' => '*'],
+            ),
+            'https://example.test/news.ts' => Http::response(
+                "\x00\x00\x01\xBD\x00\x01\x02\x03",
+                206,
+                [
+                    'Content-Type' => 'video/mp2t',
+                    'Access-Control-Allow-Origin' => '*',
+                ],
+            ),
+            'https://example.test/closed.ts' => Http::response(
+                "\x00\x00\x01\xBD\x00\x01\x02\x03",
+                206,
+                [
+                    'Content-Type' => 'video/mp2t',
+                    'Access-Control-Allow-Origin' => '*',
+                ],
+            ),
         ]);
 
         $this->artisan('pixflix:sync-iptv', ['--country' => 'MX'])->assertSuccessful();
@@ -43,25 +69,25 @@ M3U),
     public function test_sync_uses_multiple_configured_playlists_and_their_optional_filters(): void
     {
         $this->app->make(SyncSettings::class)->put('iptv.playlists', [
-                [
-                    'id' => 'mx-spanish',
-                    'name' => 'México en español',
-                    'url' => 'https://example.test/mx.m3u',
-                    'country' => 'MX',
-                    'language' => 'spa',
-                    'use_proxy' => false,
-                    'enabled' => true,
-                    'priority' => 1,
-                ],
-                [
-                    'id' => 'all',
-                    'name' => 'Sin filtros',
-                    'url' => 'https://example.test/pluto-live-MX.m3u',
-                    'country' => null,
-                    'language' => null,
-                    'enabled' => true,
-                    'priority' => 2,
-                ],
+            [
+                'id' => 'mx-spanish',
+                'name' => 'México en español',
+                'url' => 'https://example.test/mx.m3u',
+                'country' => 'MX',
+                'language' => 'spa',
+                'use_proxy' => false,
+                'enabled' => true,
+                'priority' => 1,
+            ],
+            [
+                'id' => 'all',
+                'name' => 'Sin filtros',
+                'url' => 'https://example.test/pluto-live-MX.m3u',
+                'country' => null,
+                'language' => null,
+                'enabled' => true,
+                'priority' => 2,
+            ],
         ]);
 
         Http::fake([

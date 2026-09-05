@@ -10,6 +10,7 @@ class IptvResourceSyncService
 {
     public function __construct(
         private readonly IptvOrgSyncService $live,
+        private readonly IptvStreamVerifier $verifier,
     ) {}
 
     /** @return array{live: array<string, mixed>|null, errors: array<int, string>} */
@@ -23,6 +24,10 @@ class IptvResourceSyncService
                 null,
                 config('pixflix.iptv.max_channels'),
             );
+            $result['live']['verification'] = $this->verifier->run(
+                config('pixflix.iptv.country'),
+                config('pixflix.iptv.max_channels'),
+            );
         } catch (Throwable $exception) {
             $result['errors'][] = 'Canales: '.$exception->getMessage();
         }
@@ -33,5 +38,4 @@ class IptvResourceSyncService
 
         return $result;
     }
-
 }

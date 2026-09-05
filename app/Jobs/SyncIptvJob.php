@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Services\Iptv\IptvStreamVerifier;
 use App\Services\IptvOrg\IptvOrgSyncService;
 use App\Services\SyncProgressService;
 use Illuminate\Bus\Queueable;
@@ -27,7 +28,7 @@ class SyncIptvJob implements ShouldQueue
 
     public function __construct(public readonly string $progressId) {}
 
-    public function handle(IptvOrgSyncService $sync, SyncProgressService $progress): void
+    public function handle(IptvOrgSyncService $sync, IptvStreamVerifier $verifier, SyncProgressService $progress): void
     {
         try {
             $result = $sync->run(
@@ -35,6 +36,10 @@ class SyncIptvJob implements ShouldQueue
                 null,
                 config('pixflix.iptv.max_channels'),
                 $this->progressId,
+            );
+            $result['verification'] = $verifier->run(
+                config('pixflix.iptv.country'),
+                config('pixflix.iptv.max_channels'),
             );
             $progress->complete($this->progressId, $result);
         } catch (Throwable $exception) {

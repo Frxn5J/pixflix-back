@@ -106,5 +106,13 @@ return [
         'max_channels' => env('PIXFLIX_IPTV_MAX_CHANNELS') !== null ? (int) env('PIXFLIX_IPTV_MAX_CHANNELS') : null,
         'timeout_seconds' => (int) env('PIXFLIX_IPTV_TIMEOUT_SECONDS', 30),
         'verify_ssl' => filter_var(env('PIXFLIX_IPTV_VERIFY_SSL', true), FILTER_VALIDATE_BOOLEAN),
+        'verifier' => [
+            'enabled' => filter_var(env('PIXFLIX_IPTV_VERIFIER_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
+            'timeout_seconds' => (int) env('PIXFLIX_IPTV_VERIFIER_TIMEOUT_SECONDS', 10),
+            'connect_timeout_seconds' => (int) env('PIXFLIX_IPTV_VERIFIER_CONNECT_TIMEOUT_SECONDS', 5),
+            'attempts' => max(1, (int) env('PIXFLIX_IPTV_VERIFIER_ATTEMPTS', 2)),
+            'sample_bytes' => max(4096, (int) env('PIXFLIX_IPTV_VERIFIER_SAMPLE_BYTES', 131072)),
+            'require_cors' => filter_var(env('PIXFLIX_IPTV_VERIFIER_REQUIRE_CORS', true), FILTER_VALIDATE_BOOLEAN),
+        ],
     ],
 ];

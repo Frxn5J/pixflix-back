@@ -14,6 +14,7 @@ use App\Services\Catalog\StremioCatalogSyncService;
 use App\Services\Catalog\StremioContentVerifier;
 use App\Services\Iptv\IptvProxyPool;
 use App\Services\Iptv\IptvResourceSyncService;
+use App\Services\Iptv\IptvStreamVerifier;
 use App\Services\IptvOrg\IptvOrgSyncService;
 use App\Services\SyncProgressService;
 use App\Services\SyncSettings;
@@ -351,7 +352,7 @@ class AdminController extends Controller
         ]]);
     }
 
-    public function syncIptvPlaylists(IptvOrgSyncService $sync): JsonResponse
+    public function syncIptvPlaylists(IptvOrgSyncService $sync, IptvStreamVerifier $verifier): JsonResponse
     {
         $progress = $this->progress->start('iptv', 'Sincronización de canales IPTV');
         $syncId = (string) $progress['id'];
@@ -381,6 +382,10 @@ class AdminController extends Controller
                 null,
                 config('pixflix.iptv.max_channels'),
                 $syncId,
+            );
+            $result['verification'] = $verifier->run(
+                config('pixflix.iptv.country'),
+                config('pixflix.iptv.max_channels'),
             );
             $this->progress->complete($syncId, $result);
 
@@ -791,6 +796,9 @@ class AdminController extends Controller
             'language' => $channel->language,
             'is_active' => $channel->is_active,
             'has_stream' => $channel->stream_url !== null,
+            'stream_checked_at' => $channel->stream_checked_at?->toIso8601String(),
+            'stream_check_status' => $channel->stream_check_status,
+            'stream_check_error' => $channel->stream_check_error,
         ];
     }
 
@@ -805,7 +813,7 @@ class AdminController extends Controller
                 'url' => (string) config('pixflix.iptv.playlist_url'),
                 'country' => $this->nullableUpper(config('pixflix.iptv.country')),
                 'language' => null,
-                'use_proxy' => true,
+                'use_proxy' => false,
                 'enabled' => true,
                 'priority' => 1,
             ]];

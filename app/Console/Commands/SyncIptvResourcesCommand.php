@@ -28,6 +28,15 @@ class SyncIptvResourcesCommand extends Command
                 $result['live']['channels'],
                 $result['live']['streams'],
             ));
+            if (isset($result['live']['verification'])) {
+                $verification = $result['live']['verification'];
+                $this->info(sprintf(
+                    'Verificacion IPTV: %d revisados, %d saludables, %d desactivados.',
+                    $verification['checked'],
+                    $verification['healthy'],
+                    $verification['deactivated'],
+                ));
+            }
         }
         if (($result['vod']['status'] ?? null) === 'skipped') {
             $this->line('VOD IPTV: omitido, no hay listas activas.');

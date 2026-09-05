@@ -76,8 +76,11 @@ class IptvOrgSyncService
                     'stream_url' => $entry['stream_url'],
                     // upsert bypasses Eloquent casts, so persist the JSON explicitly.
                     'stream_headers' => json_encode($entry['stream_headers'], JSON_THROW_ON_ERROR),
-                    'use_proxy' => (bool) ($playlist['use_proxy'] ?? true),
+                    'use_proxy' => (bool) ($playlist['use_proxy'] ?? false),
                     'is_active' => true,
+                    'stream_checked_at' => null,
+                    'stream_check_status' => null,
+                    'stream_check_error' => null,
                     'updated_at' => now(),
                     'created_at' => now(),
                 ];
@@ -114,7 +117,7 @@ class IptvOrgSyncService
                 Channel::query()->upsert(
                     $chunk,
                     ['external_id'],
-                    ['source_playlist_id', 'name', 'logo', 'category', 'country', 'language', 'stream_url', 'stream_headers', 'use_proxy', 'is_active', 'updated_at'],
+                    ['source_playlist_id', 'name', 'logo', 'category', 'country', 'language', 'stream_url', 'stream_headers', 'use_proxy', 'is_active', 'stream_checked_at', 'stream_check_status', 'stream_check_error', 'updated_at'],
                 );
                 $processed += count($chunk);
                 if ($progressId !== null) {
@@ -151,7 +154,9 @@ class IptvOrgSyncService
                 'id' => 'iptv-org-default',
                 'country' => config('pixflix.iptv.country'),
                 'language' => null,
-                'use_proxy' => true,
+                // Do not force a proxy when the installation has none. The
+                // player cannot reproduce a proxy-required channel otherwise.
+                'use_proxy' => $this->hasConfiguredProxy(),
                 'enabled' => true,
             ]];
         }
@@ -202,5 +207,16 @@ class IptvOrgSyncService
         return preg_match('/(?:^|[-_.])([a-z]{2})(?=[-_.]|$)/i', $filename, $matches) === 1
             ? strtoupper($matches[1])
             : null;
+    }
+
+    private function hasConfiguredProxy(): bool
+    {
+        $proxies = $this->settings->get('iptv.proxies', config('pixflix.iptv.proxies', []));
+
+        return is_array($proxies) && collect($proxies)->contains(
+            fn (mixed $proxy): bool => is_array($proxy)
+                && ($proxy['enabled'] ?? true) === true
+                && trim((string) ($proxy['base_url'] ?? '')) !== '',
+        );
     }
 }
