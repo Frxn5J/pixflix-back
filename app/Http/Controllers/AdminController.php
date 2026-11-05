@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\ApiException;
 use App\Jobs\RefreshIptvResourcesJob;
 use App\Jobs\SyncIptvJob;
 use App\Jobs\SyncStremioCatalogJob;
@@ -10,6 +11,7 @@ use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\User;
 use App\Services\Catalog\StremioAddonVerifier;
+use App\Rules\PublicUrl;
 use App\Services\Catalog\StremioCatalogSyncService;
 use App\Services\Catalog\StremioContentVerifier;
 use App\Services\Iptv\IptvProxyPool;
@@ -95,9 +97,52 @@ class AdminController extends Controller
             unset($validated['password']);
         }
 
+        $this->authorizeUserChange($request->user(), $user, $validated);
+
+        $revokeTokens = array_key_exists('password', $validated)
+            || (array_key_exists('role', $validated) && $validated['role'] !== $user->role);
+
         $user->update($validated);
 
+        if ($revokeTokens) {
+            $user->tokens()->delete();
+        }
+
         return response()->json(['data' => $this->userData($user->refresh()->load(['subscriptions' => fn ($query) => $query->latest('id')->with('plan')]))]);
+    }
+
+    /**
+     * Agents manage subscribers only. Roles and staff accounts are reserved to
+     * admins, otherwise an agent could promote itself or reset an admin's
+     * password.
+     *
+     * @param  array<string, mixed>  $changes
+     */
+    private function authorizeUserChange(?User $actor, User $target, array $changes): void
+    {
+        if ($actor?->role !== 'admin') {
+            $changesRole = array_key_exists('role', $changes) && $changes['role'] !== $target->role;
+
+            if ($changesRole || $target->isStaff()) {
+                throw new ApiException(
+                    'forbidden',
+                    'No tienes permiso para realizar esta accion.',
+                    403,
+                );
+            }
+
+            return;
+        }
+
+        $demotesAdmin = $target->role === 'admin'
+            && array_key_exists('role', $changes)
+            && $changes['role'] !== 'admin';
+
+        if ($demotesAdmin && User::query()->where('role', 'admin')->count() <= 1) {
+            throw ValidationException::withMessages([
+                'role' => ['Debe existir al menos un administrador.'],
+            ]);
+        }
     }
 
     public function storeUser(Request $request): JsonResponse
@@ -317,7 +362,7 @@ class AdminController extends Controller
             'playlists' => ['present', 'array', 'max:50'],
             'playlists.*.id' => ['nullable', 'string', 'max:100'],
             'playlists.*.name' => ['required', 'string', 'max:120'],
-            'playlists.*.url' => ['required', 'url:http,https', 'max:2048'],
+            'playlists.*.url' => ['required', 'url:http,https', 'max:2048', new PublicUrl],
             'playlists.*.country' => ['nullable', 'string', 'max:10'],
             'playlists.*.language' => ['nullable', 'string', 'max:80'],
             'playlists.*.use_proxy' => ['sometimes', 'boolean'],
@@ -453,7 +498,7 @@ class AdminController extends Controller
             'proxies' => ['present', 'array', 'max:20'],
             'proxies.*.id' => ['nullable', 'string', 'max:100'],
             'proxies.*.name' => ['required', 'string', 'max:120'],
-            'proxies.*.base_url' => ['required', 'url:http,https', 'max:2048'],
+            'proxies.*.base_url' => ['required', 'url:http,https', 'max:2048', new PublicUrl],
             'proxies.*.enabled' => ['required', 'boolean'],
             'proxies.*.priority' => ['required', 'integer', 'between:1,10000'],
         ]);
@@ -495,7 +540,7 @@ class AdminController extends Controller
             'addons' => ['present', 'array', 'max:1'],
             'addons.*.id' => ['nullable', 'string', 'max:100'],
             'addons.*.name' => ['required', 'string', 'max:120'],
-            'addons.*.base_url' => ['required', 'url:http,https', 'max:2048'],
+            'addons.*.base_url' => ['required', 'url:http,https', 'max:2048', new PublicUrl],
             'addons.*.enabled' => ['required', 'boolean'],
             'addons.*.priority' => ['required', 'integer', 'between:1,10000'],
             'addons.*.timeout_seconds' => ['nullable', 'integer', 'between:1,60'],
@@ -531,7 +576,7 @@ class AdminController extends Controller
             'addons' => ['present', 'array', 'max:1'],
             'addons.*.id' => ['nullable', 'string', 'max:100'],
             'addons.*.name' => ['required', 'string', 'max:120'],
-            'addons.*.base_url' => ['required', 'url:http,https', 'max:2048'],
+            'addons.*.base_url' => ['required', 'url:http,https', 'max:2048', new PublicUrl],
             'addons.*.enabled' => ['required', 'boolean'],
             'addons.*.priority' => ['required', 'integer', 'between:1,10000'],
             'addons.*.timeout_seconds' => ['nullable', 'integer', 'between:1,60'],
@@ -564,7 +609,7 @@ class AdminController extends Controller
     public function verifyStremioCatalogAddon(Request $request, StremioAddonVerifier $verifier): JsonResponse
     {
         $validated = $request->validate([
-            'base_url' => ['required', 'url:http,https', 'max:2048'],
+            'base_url' => ['required', 'url:http,https', 'max:2048', new PublicUrl],
             'timeout_seconds' => ['sometimes', 'integer', 'between:1,60'],
         ]);
 
@@ -578,7 +623,7 @@ class AdminController extends Controller
     public function verifyStremioStreamAddon(Request $request, StremioAddonVerifier $verifier): JsonResponse
     {
         $validated = $request->validate([
-            'base_url' => ['required', 'url:http,https', 'max:2048'],
+            'base_url' => ['required', 'url:http,https', 'max:2048', new PublicUrl],
             'timeout_seconds' => ['sometimes', 'integer', 'between:1,60'],
         ]);
 
@@ -601,7 +646,7 @@ class AdminController extends Controller
             'addons' => ['present', 'array', 'max:1'],
             'addons.*.id' => ['nullable', 'string', 'max:100'],
             'addons.*.name' => ['required', 'string', 'max:120'],
-            'addons.*.base_url' => ['required', 'url:http,https', 'max:2048'],
+            'addons.*.base_url' => ['required', 'url:http,https', 'max:2048', new PublicUrl],
             'addons.*.enabled' => ['required', 'boolean'],
             'addons.*.priority' => ['required', 'integer', 'between:1,10000'],
             'addons.*.timeout_seconds' => ['nullable', 'integer', 'between:1,60'],
@@ -689,7 +734,7 @@ class AdminController extends Controller
     public function verifyStreamFallbackAddon(Request $request, StremioAddonVerifier $verifier): JsonResponse
     {
         $validated = $request->validate([
-            'base_url' => ['required', 'url:http,https', 'max:2048'],
+            'base_url' => ['required', 'url:http,https', 'max:2048', new PublicUrl],
             'timeout_seconds' => ['sometimes', 'integer', 'between:1,60'],
         ]);
 
@@ -702,7 +747,7 @@ class AdminController extends Controller
     public function verifyStreamFallbackContent(Request $request, StremioContentVerifier $verifier): JsonResponse
     {
         $validated = $request->validate([
-            'base_url' => ['required', 'url:http,https', 'max:2048'],
+            'base_url' => ['required', 'url:http,https', 'max:2048', new PublicUrl],
             'timeout_seconds' => ['sometimes', 'integer', 'between:1,60'],
             'max_pages' => ['sometimes', 'integer', 'between:1,100'],
             'max_items' => ['sometimes', 'integer', 'between:1,5000'],

@@ -4,6 +4,7 @@ namespace App\Exceptions;
 
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -34,6 +35,12 @@ class Handler extends ExceptionHandler
 
         $this->renderable(function (Throwable $exception, Request $request): ?JsonResponse {
             if (! $request->is('api/*')) {
+                return null;
+            }
+
+            // Throttle limiters with a custom ->response() already carry the
+            // final JSON response (e.g. the 429 for login and PIN attempts).
+            if ($exception instanceof HttpResponseException) {
                 return null;
             }
 

@@ -13,6 +13,14 @@ return [
         'username' => env('ADMIN_USERNAME', 'admin'),
         'password' => env('ADMIN_PASSWORD'),
     ],
+    'security' => [
+        // Server-side downloads (playlists, proxies, addons) may not target
+        // internal addresses unless this is enabled for local development.
+        'allow_private_urls' => filter_var(
+            env('PIXFLIX_ALLOW_PRIVATE_URLS', env('APP_ENV', 'production') === 'local'),
+            FILTER_VALIDATE_BOOLEAN,
+        ),
+    ],
     'request_id_header' => 'X-Request-Id',
     'pwa' => [
         'force_update' => filter_var(env('PIXFLIX_PWA_FORCE_UPDATE', false), FILTER_VALIDATE_BOOLEAN),

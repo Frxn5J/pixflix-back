@@ -2,8 +2,14 @@
 
 namespace App\Providers;
 
+use App\Support\OutboundUrlGuard;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\ServiceProvider;
+use Psr\Http\Message\RequestInterface;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\UriInterface;
 use Throwable;
 
 class AppServiceProvider extends ServiceProvider
@@ -22,6 +28,43 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->tuneSqlite();
+        $this->guardOutboundRequests();
+    }
+
+    /**
+     * Every server-side HTTP request, including each redirect hop, must target
+     * a public address. URLs come from admin settings and third-party
+     * playlists, so they are never trusted.
+     */
+    private function guardOutboundRequests(): void
+    {
+        $assertAllowed = static function (string $url): void {
+            if (! OutboundUrlGuard::isAllowed($url)) {
+                throw new ConnectionException('Destino no permitido para solicitudes salientes.');
+            }
+        };
+
+        Http::globalRequestMiddleware(
+            static function (RequestInterface $request) use ($assertAllowed): RequestInterface {
+                $assertAllowed((string) $request->getUri());
+
+                return $request;
+            },
+        );
+
+        Http::globalOptions([
+            'allow_redirects' => [
+                'max' => 3,
+                'protocols' => ['http', 'https'],
+                'on_redirect' => static function (
+                    RequestInterface $request,
+                    ResponseInterface $response,
+                    UriInterface $uri,
+                ) use ($assertAllowed): void {
+                    $assertAllowed((string) $uri);
+                },
+            ],
+        ]);
     }
 
     /**

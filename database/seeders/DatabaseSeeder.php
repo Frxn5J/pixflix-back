@@ -13,25 +13,13 @@ class DatabaseSeeder extends Seeder
 {
     /**
      * Seed the application's database.
+     *
+     * The administrator is created everywhere. Demo content and demo accounts
+     * with well-known passwords only exist in local and testing environments.
      */
     public function run(): void
     {
         $adminPassword = $this->adminPassword();
-
-        $this->call(CatalogSeeder::class);
-        $this->call(ChannelSeeder::class);
-
-        $plan = Plan::query()->updateOrCreate(
-            ['name' => 'Familiar'],
-            [
-                'price' => 149.00,
-                'max_profiles' => 4,
-                'max_devices' => 2,
-                'max_quality' => '1080p',
-                'is_active' => true,
-                'description' => 'Plan demo para desarrollo local.',
-            ],
-        );
 
         $adminEmail = config('pixflix.admin.email');
         $admin = User::query()->where('email', $adminEmail)->first();
@@ -51,6 +39,28 @@ class DatabaseSeeder extends Seeder
             'password' => Hash::make($adminPassword),
             'role' => 'admin',
         ])->save();
+
+        if (app()->environment(['local', 'testing'])) {
+            $this->seedDemoData($admin);
+        }
+    }
+
+    private function seedDemoData(User $admin): void
+    {
+        $this->call(CatalogSeeder::class);
+        $this->call(ChannelSeeder::class);
+
+        $plan = Plan::query()->updateOrCreate(
+            ['name' => 'Familiar'],
+            [
+                'price' => 149.00,
+                'max_profiles' => 4,
+                'max_devices' => 2,
+                'max_quality' => '1080p',
+                'is_active' => true,
+                'description' => 'Plan demo para desarrollo local.',
+            ],
+        );
 
         User::query()->updateOrCreate(
             ['email' => 'agent@pixflix.test'],
