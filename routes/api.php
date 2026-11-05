@@ -95,6 +95,9 @@ Route::prefix('v1')->group(function () {
             Route::get('/profiles', [ProfileController::class, 'index'])->name('api.v1.profiles.index');
             Route::post('/profiles', [ProfileController::class, 'store'])->name('api.v1.profiles.store');
             Route::put('/profiles/{id}', [ProfileController::class, 'update'])->name('api.v1.profiles.update');
+            Route::post('/profiles/{id}/verify-pin', [ProfileController::class, 'verifyPin'])
+                ->middleware('throttle:profile-pin')
+                ->name('api.v1.profiles.verify-pin');
             Route::delete('/profiles/{id}', [ProfileController::class, 'destroy'])->name('api.v1.profiles.destroy');
             Route::get('/profiles/{profileId}/favorites', [FavoriteController::class, 'index'])->name('api.v1.profiles.favorites.index');
             Route::post('/profiles/{profileId}/favorites', [FavoriteController::class, 'store'])->name('api.v1.profiles.favorites.store');

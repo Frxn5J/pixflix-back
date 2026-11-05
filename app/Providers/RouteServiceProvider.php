@@ -37,6 +37,18 @@ class RouteServiceProvider extends ServiceProvider
                 ], 429));
         });
 
+        // A 4-6 digit PIN is brute-forceable without a tight, per-profile cap.
+        RateLimiter::for('profile-pin', function (Request $request) {
+            return Limit::perMinute(5)
+                ->by('pin:'.($request->user()?->id ?? $request->ip()).'|'.$request->route('id'))
+                ->response(fn () => response()->json([
+                    'error' => [
+                        'code' => 'rate_limited',
+                        'message' => 'Demasiados intentos. Espera un momento y vuelve a intentar.',
+                    ],
+                ], 429));
+        });
+
         // Guests (login, public endpoints) are capped tighter than
         // authenticated accounts: one NAT'd IP must not starve its users.
         RateLimiter::for('api', function (Request $request) {

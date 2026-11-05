@@ -207,6 +207,7 @@ class AuthController extends Controller
                     'name' => $profile->name,
                     'avatar_url' => $profile->avatar_url,
                     'is_kids' => $profile->is_kids,
+                    'has_pin' => $profile->pin_hash !== null,
                     'created_at' => $profile->created_at?->toIso8601String(),
                 ],
             )->values()->all() ?? [],

@@ -141,6 +141,92 @@ class ProfileTest extends TestCase
             ->assertJsonCount(0, 'data');
     }
 
+    public function test_profiles_report_whether_they_have_a_pin_without_exposing_it(): void
+    {
+        [, $token] = $this->subscriberWithPlan(3);
+
+        $protected = $this->withToken($token)->postJson('/api/v1/profiles', [
+            'name' => 'Con PIN',
+            'pin' => '1234',
+        ])->assertCreated()->assertJsonPath('data.has_pin', true);
+
+        $this->withToken($token)->postJson('/api/v1/profiles', [
+            'name' => 'Sin PIN',
+        ])->assertCreated()->assertJsonPath('data.has_pin', false);
+
+        $this->withToken($token)
+            ->getJson('/api/v1/me')
+            ->assertJsonFragment(['id' => $protected->json('data.id'), 'has_pin' => true])
+            ->assertJsonMissingPath('data.profiles.0.pin_hash');
+    }
+
+    public function test_pin_is_verified_per_profile(): void
+    {
+        [, $token] = $this->subscriberWithPlan(2);
+
+        $id = $this->withToken($token)->postJson('/api/v1/profiles', [
+            'name' => 'Con PIN',
+            'pin' => '1234',
+        ])->json('data.id');
+
+        $this->withToken($token)
+            ->postJson("/api/v1/profiles/{$id}/verify-pin", ['pin' => '1234'])
+            ->assertOk()
+            ->assertJsonPath('data.verified', true);
+
+        $this->withToken($token)
+            ->postJson("/api/v1/profiles/{$id}/verify-pin", ['pin' => '0000'])
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'invalid_pin');
+
+        $this->withToken($token)
+            ->postJson("/api/v1/profiles/{$id}/verify-pin", [])
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'invalid_pin');
+    }
+
+    public function test_profile_without_pin_verifies_and_foreign_profile_is_hidden(): void
+    {
+        [, $token] = $this->subscriberWithPlan(2);
+        [, $otherToken] = $this->subscriberWithPlan(2);
+
+        $open = $this->withToken($token)->postJson('/api/v1/profiles', [
+            'name' => 'Libre',
+        ])->json('data.id');
+
+        $this->withToken($token)
+            ->postJson("/api/v1/profiles/{$open}/verify-pin")
+            ->assertOk();
+
+        // Sanctum caches the resolved user per guard within one test process.
+        $this->app['auth']->forgetGuards();
+
+        $this->withToken($otherToken)
+            ->postJson("/api/v1/profiles/{$open}/verify-pin", ['pin' => '1234'])
+            ->assertNotFound();
+    }
+
+    public function test_pin_verification_is_rate_limited(): void
+    {
+        [, $token] = $this->subscriberWithPlan(2);
+
+        $id = $this->withToken($token)->postJson('/api/v1/profiles', [
+            'name' => 'Con PIN',
+            'pin' => '1234',
+        ])->json('data.id');
+
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $this->withToken($token)
+                ->postJson("/api/v1/profiles/{$id}/verify-pin", ['pin' => '0000'])
+                ->assertStatus(422);
+        }
+
+        $this->withToken($token)
+            ->postJson("/api/v1/profiles/{$id}/verify-pin", ['pin' => '1234'])
+            ->assertStatus(429)
+            ->assertJsonPath('error.code', 'rate_limited');
+    }
+
     private function subscriberWithPlan(int $maxProfiles): array
     {
         $user = User::factory()->create();

@@ -73,6 +73,27 @@ class ProfileController extends Controller
         return response()->json(['data' => $this->profileData($profile->refresh())]);
     }
 
+    public function verifyPin(Request $request, int $id): JsonResponse
+    {
+        $profile = $this->ownedProfile($this->subscription($request), $id);
+
+        if ($profile->pin_hash === null) {
+            return response()->json(['data' => ['verified' => true]]);
+        }
+
+        $pin = $request->input('pin');
+
+        if (! is_string($pin) || ! Hash::check($pin, $profile->pin_hash)) {
+            throw new ApiException(
+                'invalid_pin',
+                'El PIN no es correcto.',
+                422,
+            );
+        }
+
+        return response()->json(['data' => ['verified' => true]]);
+    }
+
     public function destroy(Request $request, int $id): JsonResponse
     {
         $profile = $this->ownedProfile($this->subscription($request), $id);
@@ -165,6 +186,7 @@ class ProfileController extends Controller
             'name' => $profile->name,
             'avatar_url' => $profile->avatar_url,
             'is_kids' => $profile->is_kids,
+            'has_pin' => $profile->pin_hash !== null,
             'created_at' => $profile->created_at?->toIso8601String(),
         ];
     }

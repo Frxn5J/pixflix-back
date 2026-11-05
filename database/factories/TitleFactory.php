@@ -15,6 +15,7 @@ class TitleFactory extends Factory
         $title = fake()->unique()->sentence(2);
 
         return [
+            'source' => 'stremio',
             'external_id' => fake()->unique()->numerify('title-#####'),
             'tmdb_id' => null,
             'slug' => fake()->unique()->slug(2),
