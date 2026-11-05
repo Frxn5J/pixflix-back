@@ -4,6 +4,7 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\ChannelController;
+use App\Http\Controllers\ExternalProfileMediaController;
 use App\Http\Controllers\FavoriteController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\PlaybackController;
@@ -57,39 +58,43 @@ Route::prefix('v1')->group(function () {
             Route::get('/plans', [AdminController::class, 'plans'])->name('api.v1.admin.plans');
             Route::post('/plans', [AdminController::class, 'storePlan'])->name('api.v1.admin.plans.store');
             Route::put('/plans/{id}', [AdminController::class, 'updatePlan'])->name('api.v1.admin.plans.update');
-            Route::get('/channels', [AdminController::class, 'channels'])->name('api.v1.admin.channels');
-            Route::put('/channels/{id}', [AdminController::class, 'updateChannel'])->name('api.v1.admin.channels.update');
-            Route::get('/iptv-playlists', [AdminController::class, 'iptvPlaylists'])->name('api.v1.admin.iptv-playlists');
-            Route::put('/iptv-playlists', [AdminController::class, 'updateIptvPlaylists'])->name('api.v1.admin.iptv-playlists.update');
-            Route::post('/iptv-playlists/sync', [AdminController::class, 'syncIptvPlaylists'])->name('api.v1.admin.iptv-playlists.sync');
-            Route::post('/iptv-resources/refresh', [AdminController::class, 'refreshIptvResources'])->name('api.v1.admin.iptv-resources.refresh');
-            Route::get('/iptv-proxies', [AdminController::class, 'iptvProxies'])->name('api.v1.admin.iptv-proxies');
-            Route::put('/iptv-proxies', [AdminController::class, 'updateIptvProxies'])->name('api.v1.admin.iptv-proxies.update');
-            Route::get('/stream-fallback', [AdminController::class, 'streamFallback'])
-                ->middleware('role:admin')
-                ->name('api.v1.admin.stream-fallback');
-            Route::put('/stream-fallback', [AdminController::class, 'updateStreamFallback'])
-                ->middleware('role:admin')
-                ->name('api.v1.admin.stream-fallback.update');
-            Route::post('/stream-fallback/verify', [AdminController::class, 'verifyStreamFallbackAddon'])
-                ->middleware('role:admin')
-                ->name('api.v1.admin.stream-fallback.verify');
-            Route::post('/stream-fallback/verify-content', [AdminController::class, 'verifyStreamFallbackContent'])
-                ->middleware('role:admin')
-                ->name('api.v1.admin.stream-fallback.verify-content');
-            Route::post('/stream-fallback/sync-catalog', [AdminController::class, 'syncStreamFallbackCatalog'])
-                ->middleware('role:admin')
-                ->name('api.v1.admin.stream-fallback.sync-catalog');
+            if (! config('pixflix.accounts_only')) {
+                Route::get('/channels', [AdminController::class, 'channels'])->name('api.v1.admin.channels');
+                Route::put('/channels/{id}', [AdminController::class, 'updateChannel'])->name('api.v1.admin.channels.update');
+                Route::get('/iptv-playlists', [AdminController::class, 'iptvPlaylists'])->name('api.v1.admin.iptv-playlists');
+                Route::put('/iptv-playlists', [AdminController::class, 'updateIptvPlaylists'])->name('api.v1.admin.iptv-playlists.update');
+                Route::post('/iptv-playlists/sync', [AdminController::class, 'syncIptvPlaylists'])->name('api.v1.admin.iptv-playlists.sync');
+                Route::post('/iptv-resources/refresh', [AdminController::class, 'refreshIptvResources'])->name('api.v1.admin.iptv-resources.refresh');
+                Route::get('/iptv-proxies', [AdminController::class, 'iptvProxies'])->name('api.v1.admin.iptv-proxies');
+                Route::put('/iptv-proxies', [AdminController::class, 'updateIptvProxies'])->name('api.v1.admin.iptv-proxies.update');
+                Route::get('/stream-fallback', [AdminController::class, 'streamFallback'])
+                    ->middleware('role:admin')
+                    ->name('api.v1.admin.stream-fallback');
+                Route::put('/stream-fallback', [AdminController::class, 'updateStreamFallback'])
+                    ->middleware('role:admin')
+                    ->name('api.v1.admin.stream-fallback.update');
+                Route::post('/stream-fallback/verify', [AdminController::class, 'verifyStreamFallbackAddon'])
+                    ->middleware('role:admin')
+                    ->name('api.v1.admin.stream-fallback.verify');
+                Route::post('/stream-fallback/verify-content', [AdminController::class, 'verifyStreamFallbackContent'])
+                    ->middleware('role:admin')
+                    ->name('api.v1.admin.stream-fallback.verify-content');
+                Route::post('/stream-fallback/sync-catalog', [AdminController::class, 'syncStreamFallbackCatalog'])
+                    ->middleware('role:admin')
+                    ->name('api.v1.admin.stream-fallback.sync-catalog');
+            }
         });
 
         Route::middleware('subscription.active')->group(function () {
-            Route::get('/catalog', [CatalogController::class, 'index'])->name('api.v1.catalog.index');
-            Route::get('/catalog/featured', [CatalogController::class, 'featured'])->name('api.v1.catalog.featured');
-            Route::get('/catalog/genres', [CatalogController::class, 'genres'])->name('api.v1.catalog.genres');
-            Route::get('/titles/{slug}', [CatalogController::class, 'show'])->name('api.v1.titles.show');
-            Route::get('/titles/{slug}/streams', [PlaybackController::class, 'titleStreams'])->name('api.v1.titles.streams');
-            Route::get('/episodes/{id}/streams', [PlaybackController::class, 'episodeStreams'])->name('api.v1.episodes.streams');
-            Route::post('/catalog/resolve', [PlaybackController::class, 'resolve'])->name('api.v1.catalog.resolve');
+            if (! config('pixflix.accounts_only')) {
+                Route::get('/catalog', [CatalogController::class, 'index'])->name('api.v1.catalog.index');
+                Route::get('/catalog/featured', [CatalogController::class, 'featured'])->name('api.v1.catalog.featured');
+                Route::get('/catalog/genres', [CatalogController::class, 'genres'])->name('api.v1.catalog.genres');
+                Route::get('/titles/{slug}', [CatalogController::class, 'show'])->name('api.v1.titles.show');
+                Route::get('/titles/{slug}/streams', [PlaybackController::class, 'titleStreams'])->name('api.v1.titles.streams');
+                Route::get('/episodes/{id}/streams', [PlaybackController::class, 'episodeStreams'])->name('api.v1.episodes.streams');
+                Route::post('/catalog/resolve', [PlaybackController::class, 'resolve'])->name('api.v1.catalog.resolve');
+            }
             Route::get('/progress/continue-watching', [PlaybackController::class, 'continueWatching'])->name('api.v1.progress.continue');
             Route::put('/progress', [PlaybackController::class, 'updateProgress'])->name('api.v1.progress.update');
             Route::get('/profiles', [ProfileController::class, 'index'])->name('api.v1.profiles.index');
@@ -102,10 +107,17 @@ Route::prefix('v1')->group(function () {
             Route::get('/profiles/{profileId}/favorites', [FavoriteController::class, 'index'])->name('api.v1.profiles.favorites.index');
             Route::post('/profiles/{profileId}/favorites', [FavoriteController::class, 'store'])->name('api.v1.profiles.favorites.store');
             Route::delete('/profiles/{profileId}/favorites/{titleId}', [FavoriteController::class, 'destroy'])->name('api.v1.profiles.favorites.destroy');
-            Route::get('/channels', [ChannelController::class, 'index'])->name('api.v1.channels.index');
-            Route::get('/channels/{id}', [ChannelController::class, 'show'])->name('api.v1.channels.show');
-            Route::get('/channels/{id}/epg', [ChannelController::class, 'epg'])->name('api.v1.channels.epg');
-            Route::get('/epg/now', [ChannelController::class, 'now'])->name('api.v1.epg.now');
+            Route::get('/profiles/{profileId}/external-favorites', [ExternalProfileMediaController::class, 'favorites']);
+            Route::put('/profiles/{profileId}/external-favorites', [ExternalProfileMediaController::class, 'saveFavorite']);
+            Route::delete('/profiles/{profileId}/external-favorites', [ExternalProfileMediaController::class, 'deleteFavorite']);
+            Route::get('/profiles/{profileId}/external-progress', [ExternalProfileMediaController::class, 'progress']);
+            Route::put('/profiles/{profileId}/external-progress', [ExternalProfileMediaController::class, 'saveProgress']);
+            if (! config('pixflix.accounts_only')) {
+                Route::get('/channels', [ChannelController::class, 'index'])->name('api.v1.channels.index');
+                Route::get('/channels/{id}', [ChannelController::class, 'show'])->name('api.v1.channels.show');
+                Route::get('/channels/{id}/epg', [ChannelController::class, 'epg'])->name('api.v1.channels.epg');
+                Route::get('/epg/now', [ChannelController::class, 'now'])->name('api.v1.epg.now');
+            }
         });
     });
 });

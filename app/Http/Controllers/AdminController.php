@@ -10,8 +10,8 @@ use App\Models\Channel;
 use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\User;
-use App\Services\Catalog\StremioAddonVerifier;
 use App\Rules\PublicUrl;
+use App\Services\Catalog\StremioAddonVerifier;
 use App\Services\Catalog\StremioCatalogSyncService;
 use App\Services\Catalog\StremioContentVerifier;
 use App\Services\Iptv\IptvProxyPool;
@@ -44,8 +44,8 @@ class AdminController extends Controller
             'trials' => Subscription::query()->where('is_trial', true)->where('status', 'trial')->count(),
             'plans' => Plan::query()->count(),
             'active_plans' => Plan::query()->where('is_active', true)->count(),
-            'channels' => Channel::query()->count(),
-            'active_channels' => Channel::query()->where('is_active', true)->count(),
+            'channels' => config('pixflix.accounts_only') ? 0 : Channel::query()->count(),
+            'active_channels' => config('pixflix.accounts_only') ? 0 : Channel::query()->where('is_active', true)->count(),
         ]]);
     }
 

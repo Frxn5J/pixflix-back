@@ -15,6 +15,9 @@
         'fallback' => 'VOD Stremio',
         'trials' => 'Crear prueba',
     ];
+    if (config('pixflix.accounts_only')) {
+        unset($tabs['channels'], $tabs['iptv-playlists'], $tabs['iptv-proxies'], $tabs['fallback']);
+    }
 @endphp
 <div class="page-heading">
     <div><p class="eyebrow">CONTROL DEL SERVICIO</p><h1>Panel administrativo</h1><p class="muted">Todas las configuraciones se guardan y ejecutan en Laravel.</p></div>
@@ -63,15 +66,17 @@
 
 @if ($section === 'overview')
     <div class="metric-grid">
-        @foreach ([['users','Usuarios'],['subscribers','Suscriptores'],['active_subscriptions','Suscripciones activas'],['trials','Pruebas activas'],['plans','Planes'],['channels','Canales'],['active_channels','Canales activos'],['staff','Personal']] as [$key,$label])
+        @foreach (array_filter([['users','Usuarios'],['subscribers','Suscriptores'],['active_subscriptions','Suscripciones activas'],['trials','Pruebas activas'],['plans','Planes'],['channels','Canales'],['active_channels','Canales activos'],['staff','Personal']], fn ($metric) => !config('pixflix.accounts_only') || !in_array($metric[0], ['channels', 'active_channels'])) as [$key,$label])
             <div class="metric"><span>{{ $label }}</span><strong>{{ $overview[$key] ?? 0 }}</strong></div>
         @endforeach
     </div>
+    @unless (config('pixflix.accounts_only'))
     <section class="panel" style="margin-top:18px">
         <div class="panel-heading"><div><p class="eyebrow">FUENTE DE CONTENIDO</p><h2>Estado de Stremio</h2></div><span class="status @if (!($streamFallback['enabled'] ?? false)) off @endif">{{ ($streamFallback['enabled'] ?? false) ? 'Activo' : 'Inactivo' }}</span></div>
         <p class="muted">Un único addon Stremio abastece el catálogo y la reproducción de VOD. No hay fuentes alternativas.</p>
         <div class="actions"><a class="button primary" href="{{ route('admin.dashboard', ['section' => 'fallback']) }}">Administrar VOD</a></div>
     </section>
+    @endunless
 @elseif ($section === 'users')
     <section class="panel">
         <div class="panel-heading"><div><p class="eyebrow">CUENTAS</p><h2>Usuarios</h2><p class="muted">Edita identidad, rol y contraseña desde el backend.</p></div><span class="status">{{ count($users) }} mostrados</span></div>

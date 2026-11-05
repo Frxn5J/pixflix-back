@@ -17,32 +17,36 @@ class Kernel extends ConsoleKernel
             ->daily();
 
         $settings = app(SyncSettings::class);
-        $schedule->command('pixflix:sync-stremio-vod')
-            ->dailyAt((string) $settings->get('sync.cron_hour', config('pixflix.sync.cron_hour', '04:00')))
-            ->timezone((string) $settings->get('sync.timezone', config('pixflix.sync.timezone', 'UTC')))
-            ->withoutOverlapping()
-            ->onOneServer();
+        if (! config('pixflix.accounts_only')) {
+            $schedule->command('pixflix:sync-stremio-vod')
+                ->dailyAt((string) $settings->get('sync.cron_hour', config('pixflix.sync.cron_hour', '04:00')))
+                ->timezone((string) $settings->get('sync.timezone', config('pixflix.sync.timezone', 'UTC')))
+                ->withoutOverlapping()
+                ->onOneServer();
+        }
         $schedule->command('pixflix:expire-trials')
             ->everyMinute()
             ->withoutOverlapping()
             ->onOneServer();
 
-        $cacheWarmup = $schedule->command('pixflix:warm-api-cache --force')
-            ->timezone((string) $settings->get('sync.timezone', config('pixflix.sync.timezone', 'UTC')))
-            ->withoutOverlapping()
-            ->onOneServer();
+        if (! config('pixflix.accounts_only')) {
+            $cacheWarmup = $schedule->command('pixflix:warm-api-cache --force')
+                ->timezone((string) $settings->get('sync.timezone', config('pixflix.sync.timezone', 'UTC')))
+                ->withoutOverlapping()
+                ->onOneServer();
 
-        if ((int) config('pixflix.cache.warmup_interval_hours', 12) === 24) {
-            $cacheWarmup->dailyAt('00:00');
-        } else {
-            $cacheWarmup->twiceDaily(0, 12);
+            if ((int) config('pixflix.cache.warmup_interval_hours', 12) === 24) {
+                $cacheWarmup->dailyAt('00:00');
+            } else {
+                $cacheWarmup->twiceDaily(0, 12);
+            }
+
+            $schedule->command('pixflix:sync-iptv-resources')
+                ->everyThreeHours()
+                ->timezone((string) $settings->get('sync.timezone', config('pixflix.sync.timezone', 'UTC')))
+                ->withoutOverlapping()
+                ->onOneServer();
         }
-
-        $schedule->command('pixflix:sync-iptv-resources')
-            ->everyThreeHours()
-            ->timezone((string) $settings->get('sync.timezone', config('pixflix.sync.timezone', 'UTC')))
-            ->withoutOverlapping()
-            ->onOneServer();
     }
 
     /**

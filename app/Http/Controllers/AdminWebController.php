@@ -37,11 +37,11 @@ class AdminWebController extends Controller
             'users' => $this->data($this->admin->users(Request::create('/admin/users?per_page=100', 'GET', ['per_page' => 100]))),
             'subscriptions' => $this->data($this->admin->subscriptions(Request::create('/admin/subscriptions?per_page=100', 'GET', ['per_page' => 100]))),
             'plans' => $this->data($this->admin->plans()),
-            'channels' => $this->data($this->admin->channels(Request::create('/admin/channels', 'GET'))),
-            'iptvPlaylists' => $this->data($this->admin->iptvPlaylists())['playlists'] ?? [],
-            'iptvProxies' => $this->data($this->admin->iptvProxies($proxyPool))['proxies'] ?? [],
-            'streamFallback' => $this->data($this->admin->streamFallback()),
-            'syncProgress' => $this->progress->dashboard($request->session()->get('sync_id')),
+            'channels' => config('pixflix.accounts_only') ? [] : $this->data($this->admin->channels(Request::create('/admin/channels', 'GET'))),
+            'iptvPlaylists' => config('pixflix.accounts_only') ? [] : ($this->data($this->admin->iptvPlaylists())['playlists'] ?? []),
+            'iptvProxies' => config('pixflix.accounts_only') ? [] : ($this->data($this->admin->iptvProxies($proxyPool))['proxies'] ?? []),
+            'streamFallback' => config('pixflix.accounts_only') ? [] : $this->data($this->admin->streamFallback()),
+            'syncProgress' => config('pixflix.accounts_only') ? [] : $this->progress->dashboard($request->session()->get('sync_id')),
         ]);
     }
 
@@ -479,6 +479,10 @@ class AdminWebController extends Controller
 
     private function section(string $section): string
     {
+        if (config('pixflix.accounts_only') && ! in_array($section, ['overview', 'users', 'subscriptions', 'plans', 'trials'], true)) {
+            return 'overview';
+        }
+
         return in_array($section, [
             'overview', 'users', 'subscriptions', 'plans', 'channels',
             'iptv-playlists', 'iptv-proxies', 'fallback', 'trials',

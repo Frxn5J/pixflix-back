@@ -3,6 +3,7 @@
 return [
     'service' => env('PIXFLIX_SERVICE_NAME', 'pixflix-api'),
     'api_version' => 'v1',
+    'accounts_only' => filter_var(env('PIXFLIX_ACCOUNTS_ONLY', true), FILTER_VALIDATE_BOOLEAN),
     'auth_token_name' => env('PIXFLIX_AUTH_TOKEN_NAME', 'pwa'),
     'auth_token_lifetime_minutes' => max(
         1,
