@@ -59,5 +59,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'admin.web'])->group
         Route::post('/stream-fallback/sync-catalog', [AdminWebController::class, 'syncStreamFallbackCatalog'])->name('stream-fallback.sync-catalog');
     }
 
+    Route::put('/video-kit', [AdminWebController::class, 'updateVideoKit'])->name('video-kit.update');
+
     Route::post('/trials', [AdminWebController::class, 'createTrial'])->name('trials.store');
 });

@@ -11,6 +11,7 @@ use App\Services\Iptv\IptvStreamVerifier;
 use App\Services\IptvOrg\IptvOrgSyncService;
 use App\Services\SyncProgressService;
 use App\Services\SyncSettings;
+use App\Services\VideoKitStore;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -28,11 +29,12 @@ class AdminWebController extends Controller
         private readonly SyncProgressService $progress,
     ) {}
 
-    public function dashboard(Request $request, IptvProxyPool $proxyPool): View
+    public function dashboard(Request $request, IptvProxyPool $proxyPool, VideoKitStore $videoKit): View
     {
         return view('admin.dashboard', [
             'section' => $this->section($request->string('section')->toString()),
             'admin' => $request->user(),
+            'videoKit' => $videoKit->status(),
             'overview' => $this->data($this->admin->overview()),
             'users' => $this->data($this->admin->users(Request::create('/admin/users?per_page=100', 'GET', ['per_page' => 100]))),
             'subscriptions' => $this->data($this->admin->subscriptions(Request::create('/admin/subscriptions?per_page=100', 'GET', ['per_page' => 100]))),
@@ -355,6 +357,20 @@ class AdminWebController extends Controller
         return $this->forward('fallback', fn () => $this->admin->syncStreamFallbackCatalog($sync), 'Catalogo Stremio importado.');
     }
 
+    public function updateVideoKit(Request $request): RedirectResponse
+    {
+        $request->validate(['kit_file' => ['nullable', 'file', 'max:1024'], 'kit' => ['nullable', 'string', 'max:1048576']]);
+        $content = $request->hasFile('kit_file')
+            ? (string) file_get_contents($request->file('kit_file')->getRealPath())
+            : (string) $request->input('kit', '');
+
+        return $this->forward(
+            'video-kit',
+            fn () => app(VideoKitController::class)->update($this->syntheticRequest(['kit' => $content])),
+            'Configuración de vídeo publicada. Los dispositivos la tomarán al abrir la app.',
+        );
+    }
+
     public function createTrial(Request $request): RedirectResponse
     {
         try {
@@ -479,13 +495,13 @@ class AdminWebController extends Controller
 
     private function section(string $section): string
     {
-        if (config('pixflix.accounts_only') && ! in_array($section, ['overview', 'users', 'subscriptions', 'plans', 'trials'], true)) {
+        if (config('pixflix.accounts_only') && ! in_array($section, ['overview', 'users', 'subscriptions', 'plans', 'video-kit', 'trials'], true)) {
             return 'overview';
         }
 
         return in_array($section, [
             'overview', 'users', 'subscriptions', 'plans', 'channels',
-            'iptv-playlists', 'iptv-proxies', 'fallback', 'trials',
+            'iptv-playlists', 'iptv-proxies', 'fallback', 'video-kit', 'trials',
         ], true) ? $section : 'overview';
     }
 

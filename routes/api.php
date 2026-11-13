@@ -10,6 +10,7 @@ use App\Http\Controllers\HealthController;
 use App\Http\Controllers\PlaybackController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\TrialController;
+use App\Http\Controllers\VideoKitController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -50,6 +51,12 @@ Route::prefix('v1')->group(function () {
 
         Route::prefix('admin')->middleware('role:admin,agent')->group(function () {
             Route::get('/overview', [AdminController::class, 'overview'])->name('api.v1.admin.overview');
+            Route::get('/video-kit', [VideoKitController::class, 'status'])
+                ->middleware('role:admin')
+                ->name('api.v1.admin.video-kit');
+            Route::put('/video-kit', [VideoKitController::class, 'update'])
+                ->middleware('role:admin')
+                ->name('api.v1.admin.video-kit.update');
             Route::get('/users', [AdminController::class, 'users'])->name('api.v1.admin.users');
             Route::post('/users', [AdminController::class, 'storeUser'])->name('api.v1.admin.users.store');
             Route::put('/users/{id}', [AdminController::class, 'updateUser'])->name('api.v1.admin.users.update');
@@ -95,6 +102,9 @@ Route::prefix('v1')->group(function () {
                 Route::get('/episodes/{id}/streams', [PlaybackController::class, 'episodeStreams'])->name('api.v1.episodes.streams');
                 Route::post('/catalog/resolve', [PlaybackController::class, 'resolve'])->name('api.v1.catalog.resolve');
             }
+            Route::get('/video/kit', [VideoKitController::class, 'show'])
+                ->middleware('throttle:30,1')
+                ->name('api.v1.video.kit');
             Route::get('/progress/continue-watching', [PlaybackController::class, 'continueWatching'])->name('api.v1.progress.continue');
             Route::put('/progress', [PlaybackController::class, 'updateProgress'])->name('api.v1.progress.update');
             Route::get('/profiles', [ProfileController::class, 'index'])->name('api.v1.profiles.index');

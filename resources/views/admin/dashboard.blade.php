@@ -9,6 +9,7 @@
         'users' => 'Usuarios',
         'subscriptions' => 'Suscripciones',
         'plans' => 'Planes',
+        'video-kit' => 'Config. de vídeo',
         'channels' => 'Canales IPTV',
         'iptv-playlists' => 'Listas IPTV',
         'iptv-proxies' => 'Proxies',
@@ -121,6 +122,16 @@
     @if (count($plans) === 0)<p class="empty">No hay planes configurados.</p>@endif
     </section>
     <section class="panel"><h3>Crear plan</h3><form method="POST" action="{{ route('admin.plans.store') }}">@csrf<div class="form-grid"><div class="field"><label>Nombre</label><input name="name" required></div><div class="field"><label>Precio</label><input name="price" type="number" min="0" step="0.01" required></div><div class="field"><label>Perfiles</label><input name="max_profiles" type="number" min="1" max="20" value="1" required></div><div class="field"><label>Dispositivos</label><input name="max_devices" type="number" min="1" max="20" value="1" required></div><div class="field"><label>Calidad</label><input name="max_quality" value="HD" required></div><div class="field"><label>Descripción</label><input name="description"></div><label class="checkbox"><input type="hidden" name="is_active" value="0"><input type="checkbox" name="is_active" value="1" checked> Activo</label></div><div class="actions"><button class="button primary" type="submit">Crear plan</button></div></form></section>
+@elseif ($section === 'video-kit')
+    <section class="panel">
+        <div class="panel-heading"><div><p class="eyebrow">CONFIGURACIÓN REMOTA</p><h2>Archivo del proveedor de vídeo</h2><p class="muted">Sube aquí el archivo del proveedor (el mismo que se usaba como <code>provider.dat</code>). Laravel lo cifra con una clave nueva y las apps lo descargan al abrir, sin recompilar.</p></div><span class="status @if (!($videoKit['configured'] ?? false)) off @endif">{{ ($videoKit['configured'] ?? false) ? 'Revisión '.$videoKit['revision'] : 'Sin publicar' }}</span></div>
+        @if ($videoKit['updated_at'] ?? null)<p class="muted">Última publicación: {{ \Carbon\CarbonImmutable::parse($videoKit['updated_at'])->format('d/m/Y H:i') }}</p>@endif
+        <form method="POST" action="{{ route('admin.video-kit.update') }}" enctype="multipart/form-data">@csrf @method('PUT')
+            <div class="form-grid"><div class="field wide"><label for="kit-file">Archivo del proveedor</label><input id="kit-file" type="file" name="kit_file"></div><div class="field wide"><label for="kit-text">…o pega su contenido</label><textarea id="kit-text" name="kit" rows="4" autocomplete="off" spellcheck="false"></textarea></div></div>
+            <p class="hint">Publicar reemplaza la configuración anterior para todos los dispositivos. El contenido no se vuelve a mostrar en el panel.</p>
+            <div class="actions"><button class="button primary" type="submit" onclick="return confirm('¿Publicar esta configuración para todos los dispositivos?')">Publicar configuración</button></div>
+        </form>
+    </section>
 @elseif ($section === 'channels')
     <section class="panel"><div class="panel-heading"><div><p class="eyebrow">TELEVISION</p><h2>Canales IPTV</h2><p class="muted">Controla qué canales sincronizados quedan disponibles.</p></div><span class="status">{{ count($channels) }} canales</span></div><div class="table-wrap"><table><thead><tr><th>Canal</th><th>Categoría</th><th>Fuente</th><th>Estado</th></tr></thead><tbody>
     @forelse ($channels as $channel)<tr><td><strong>{{ $channel['name'] }}</strong><small>{{ $channel['country'] ?: '—' }} · {{ $channel['language'] ?: '—' }}</small></td><td>{{ $channel['category'] ?: '—' }}</td><td><small>{{ $channel['external_id'] ?: '—' }}<br>{{ $channel['has_stream'] ? 'stream disponible' : 'sin stream' }}</small></td><td><form class="inline-form" method="POST" action="{{ route('admin.channels.update', $channel['id']) }}">@csrf @method('PUT')<input type="hidden" name="is_active" value="0"><label class="checkbox"><input type="checkbox" name="is_active" value="1" @checked($channel['is_active'])> Activo</label><button class="button small" type="submit">Guardar</button></form></td></tr>@empty<tr><td colspan="4" class="empty">No hay canales. Sincroniza una lista IPTV.</td></tr>@endforelse

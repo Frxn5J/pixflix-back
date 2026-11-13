@@ -205,6 +205,22 @@ URL de la instancia instalada o su `manifest.json`. `Importar catálogo` permite
 repetir la carga manualmente; las temporadas y episodios se completan al abrir
 una serie.
 
+## Configuración de vídeo remota
+
+El kit del proveedor de vídeo (credenciales, versión del cliente, URLs) se
+publica desde el panel, en **Config. de vídeo**, y las apps nativas lo descargan
+al abrir, sin recompilar. Sube el archivo original del proveedor
+(`provider.dat`): Laravel lo cifra con una clave nueva (AES-256-GCM), lo guarda
+cifrado con `APP_KEY` y sube la revisión. También se puede publicar por API con
+`PUT /api/v1/admin/video-kit` (`{"kit": "<contenido del archivo>"}`, solo `admin`).
+
+Las apps con sesión y suscripción activa lo piden con `GET /api/v1/video/kit?revision=N`
+(responde `changed: false` si ya tienen esa revisión). La app lo guarda en el
+dispositivo, así que funciona sin conexión; el kit incluido al compilar solo es
+el respaldo. Si el proveedor rechaza una petición, la app pide un kit nuevo
+(como mucho una vez por minuto) y reintenta. Rotar `APP_KEY` invalida el kit
+guardado: vuelve a publicarlo.
+
 ## Actualización
 
 ```bash
